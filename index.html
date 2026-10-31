@@ -103,6 +103,15 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
 #app.shelf-large .boost .ic{ width:52px; height:52px; }
 #app.shelf-large .boost .ic svg{ width:30px; height:30px; }
 #app.shelf-large .boost .inf{ top:32px; }
+#hardSplash{ position:fixed; left:0; right:0; top:34%; z-index:25; pointer-events:none; text-align:center; font-weight:800; font-size:2.6rem; letter-spacing:.02em;
+  padding:22px 0; color:#fff; opacity:0; text-shadow:0 3px 0 rgba(0,0,0,.25); }
+#hardSplash.hard{ background:linear-gradient(90deg, transparent, rgba(222,74,170,.88) 12%, rgba(222,74,170,.88) 88%, transparent); }
+#hardSplash.super{ background:linear-gradient(90deg, transparent, rgba(200,30,50,.9) 12%, rgba(200,30,50,.9) 88%, transparent); }
+#hardSplash.show{ animation:hardIn 1.9s ease-out forwards; }
+@keyframes hardIn{ 0%{ opacity:0; transform:scale(1.25) } 12%{ opacity:1; transform:scale(1) } 75%{ opacity:1 } 100%{ opacity:0 } }
+.top h1.hardT{ color:#d6337a; }
+.winStar{ font-size:2.4rem; line-height:1; margin:4px 0 0; color:#f4b400; text-shadow:0 2px 0 rgba(0,0,0,.2); }
+.winStar.off{ color:#c9bfb2; }
 #banner{ position:fixed; left:50%; top:calc(env(safe-area-inset-top,0px) + 62px); transform:translateX(-50%); z-index:30;
   background:var(--paper); color:var(--ink); padding:9px 16px; border-radius:999px; font-weight:600; font-size:.95rem;
   box-shadow:0 6px 18px rgba(0,0,0,.3); max-width:92vw; text-align:center; pointer-events:none; transition:opacity .25s; }
@@ -162,9 +171,11 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
 
 <div id="banner" class="hide"></div>
 
+<div id="hardSplash" hidden></div>
 <div class="modal" id="mWin" hidden><div class="sheet" style="text-align:center">
   <h2 id="winTitle">Picture cleared</h2>
   <canvas id="winPic" width="176" height="176"></canvas>
+  <div class="winStar" id="winStar">★</div>
   <p id="winText">The colony hauled every last cube home.</p>
   <div class="btns"><button class="btn" id="winReplay">Replay</button><button class="btn go" id="winNext">Next level</button></div>
 </div></div>
@@ -192,6 +203,8 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
   <h2>Settings</h2>
   <div class="row"><label for="sSpeed">Speed<small id="sSpeedV">1×</small></label><input type="range" id="sSpeed" min="0.25" max="10" step="0.25"></div>
   <div class="row"><label for="sVol">Sound<small id="sVolV">60%</small></label><input type="range" id="sVol" min="0" max="1" step="0.05"></div>
+  <div class="row"><label for="sHardL">Hard levels<small>Every 5th level is Hard and every 10th Super Hard: bigger boxes, no spare slot, more links and locks</small></label><input type="checkbox" id="sHardL"></div>
+  <div class="row"><label for="sTight">Tight-spot speedup<small>Doubles the speed (up to 8x) while only one or two ants can reach the picture</small></label><input type="checkbox" id="sTight"></div>
   <div class="row"><label for="sAuto">Auto-finish<small>When every box left fits in the free slots, place them and speed up to 4x</small></label><input type="checkbox" id="sAuto"></div>
   <div class="row"><label for="sHold">Hold to highlight<small>Hold a box for half a second to light up its tiles</small></label><input type="checkbox" id="sHold"></div>
   <div class="row"><label>Ant size</label><div class="seg" id="sAnt"></div></div>
@@ -233,7 +246,7 @@ const stage = $('#stage'), slotsEl = $('#slots'), trayEl = $('#tray');
 
 /* ---------------- persistence ---------------- */
 const SKEY = 'antline.v1';
-const DEFAULTS = { speed:1, slots:5, cols:4, size:'L', hints:false, ramp:true, antSize:'L', haptics:true, vol:.6, holdSpot:true, pics:'all', shelf:'compact', autoFinish:true, K:7, diff:'normal', shade:'soft', wander:'little', contrast:'normal', symbols:false, shape:'fit',
+const DEFAULTS = { speed:1, slots:5, cols:4, size:'L', hints:false, ramp:true, antSize:'L', haptics:true, vol:.6, holdSpot:true, pics:'all', shelf:'compact', autoFinish:true, hardLevels:true, tightBoost:true, K:7, diff:'normal', shade:'soft', wander:'little', contrast:'normal', symbols:false, shape:'fit',
   mech:{ pairs:true, mystery:true, doors:true, stones:true, keys:true } };
 function loadSave(){ try{ const r = localStorage.getItem(SKEY); if(r) return JSON.parse(r); }catch(e){} return null; }
 const saved = loadSave();
@@ -245,7 +258,9 @@ if(settings.v < 7){ settings.shelf = 'compact'; if(settings.shape !== 'square') 
 if(settings.v < 6){ if(settings.pics === 'emoji' || settings.pics === 'mix') settings.pics = 'all'; if(settings.antSize === 'S' || settings.antSize === 'M') settings.antSize = 'L'; settings.v = 6; }
 settings.mech = Object.assign({}, DEFAULTS.mech, (saved && saved.settings && saved.settings.mech) || {});
 let level = (saved && saved.level) || 1;
-function store(){ try{ localStorage.setItem(SKEY, JSON.stringify({ level, settings })); }catch(e){} }
+const stars = (saved && saved.stars) || {};
+function store(){ let sp = settings.speed; try{ if(G && G.auto && G.auto.prev != null) sp = G.auto.prev; }catch(_){}
+  try{ localStorage.setItem(SKEY, JSON.stringify({ level, stars, settings: Object.assign({}, settings, { speed: sp }) })); }catch(e){} }
 
 /* ---------------- utils ---------------- */
 function rngOf(seed){ let a = seed >>> 0; return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -645,10 +660,16 @@ const DIFF = {
   relaxed:{ amp:2,  lo:6,  hi:18, grp:.08, gmax:2 },
   normal: { amp:6,  lo:10, hi:26, grp:.16, gmax:3 },
   hard:   { amp:10, lo:15, hi:30, grp:.22, gmax:4 },
-  brutal: { amp:99, lo:20, hi:34, grp:.28, gmax:4 } };
+  brutal: { amp:99, lo:20, hi:34, grp:.28, gmax:4 },
+  savage: { amp:99, lo:26, hi:42, grp:.36, gmax:4 } };
+const DIFF_ORDER = ['relaxed', 'normal', 'hard', 'brutal', 'savage'];
+// Like Colony Flow: every 5th level is a Hard level, every 10th is Super Hard.
+// Hard levels move one difficulty step up; Super Hard moves two steps, adds more links, locks and mystery boxes, and leaves no spare slot.
+function levelTier(n){ if(!settings.hardLevels) return 0; return n % 10 === 0 ? 2 : n % 5 === 0 ? 1 : 0; }
+let BUILD_TIER = 0;
 function groupFront(cols, g){ for(const col of cols){ let k = 0; for(const b of col) if(g.includes(b)) k++; for(let j = 0; j < k; j++) if(!g.includes(col[j])) return false; } return true; }
 const KEYCOLS = ['#f4c430', '#4fa3f7'], KEYNAMES = ['gold', 'blue'];
-function mechOn(name, n){ return settings.mech[name] && (!settings.ramp || n >= UNLOCK[name]); }
+function mechOn(name, n){ return settings.mech[name] && (!settings.ramp || BUILD_TIER > 1 || n >= UNLOCK[name]); }
 const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 function depthMap(W, H, tile){
@@ -708,7 +729,7 @@ function tryBuild(n, base, r, useKeys, useObs, ease){
   const present = []; { const c = new Array(nc).fill(0); for(let i = 0; i < N; i++) if(tile[i] >= 0) c[tile[i]]++; c.forEach((v, k) => { if(v >= 4) present.push(k); }); }
 
   if(useObs && mechOn('doors', n) && present.length){
-    const nd = n >= 25 && r() < .5 ? 2 : 1;
+    const nd = BUILD_TIER > 1 || (n >= 25 && r() < .5) ? 2 : 1;
     for(let d = 0; d < nd; d++) for(let t = 0; t < 120; t++){
       const w = ri(r, Math.max(4, Math.round(W * .13)), Math.max(5, Math.round(W * .18))), h = ri(r, Math.max(3, Math.round(H * .11)), Math.max(4, Math.round(H * .15))), x = ri(r, 1, W - w - 1), y = ri(r, 1, H - h - 1); let ok = true;
       for(let yy = y - 1; yy <= y + h && ok; yy++) for(let xx = x - 1; xx <= x + w; xx++){ const i = yy * W + xx; if(kind[i] !== 0 || doorAt[i] >= 0) { ok = false; break; } if(yy >= y && yy < y + h && xx >= x && xx < x + w && tile[i] < 0){ ok = false; break; } }
@@ -729,7 +750,7 @@ function tryBuild(n, base, r, useKeys, useObs, ease){
     }
   }
   if(useKeys && mechOn('keys', n)){
-    const nk = n >= 30 && r() < .5 ? 2 : 1;
+    const nk = BUILD_TIER > 1 || (n >= 30 && r() < .5) ? 2 : 1;
     for(let k = 0; k < nk; k++){
       const cand = [];
       for(let i = 0; i < N; i++){ if(depth[i] < 3) continue; const x = i % W, y = (i / W) | 0; if(x < 1 || y < 1 || x > W - 3 || y > H - 3) continue; let ok = true;
@@ -744,7 +765,7 @@ function tryBuild(n, base, r, useKeys, useObs, ease){
   const byColor = [...Array(nc)].map(() => []);
   for(let i = 0; i < N; i++) if(tile[i] >= 0) byColor[tile[i]].push(depth[i]);
   for(const d of doors){ const dd = depth[d.y * W + d.x]; for(let k = 0; k < d.hp; k++) byColor[d.color].push(dd); }
-  const D = DIFF[settings.diff] || DIFF.normal;
+  const D = DIFF[DIFF_ORDER[Math.min(DIFF_ORDER.length - 1, Math.max(0, DIFF_ORDER.indexOf(settings.diff)) + BUILD_TIER)]] || DIFF.normal;
   let nt = 0; for(let i = 0; i < N; i++) if(tile[i] >= 0) nt++;
   const scale = Math.max(.3, nt / 484), lo = Math.max(3, Math.round(D.lo * Math.sqrt(scale)));
   const hi = Math.max(lo, Math.min(100, Math.round(D.hi * scale), lo + Math.round((8 + n / 2) * scale)));
@@ -762,7 +783,7 @@ function tryBuild(n, base, r, useKeys, useObs, ease){
   boxes.forEach((b, i) => cols[i % C].push(b));
   const rows = Math.ceil(boxes.length / C);
   if(mechOn('pairs', n)){
-    const gp = (D.grp + Math.min(n, 50) * .003) * (1 - ease * .85), at = (c, rw) => cols[c] && cols[c][rw];
+    const gp = (D.grp + Math.min(n, 50) * .003 + BUILD_TIER * .05) * (1 - ease * .85), at = (c, rw) => cols[c] && cols[c][rw];
     for(let rw = 0; rw < rows; rw++) for(let c = 0; c < C; c++){
       const b = at(c, rw); if(!b || b.group || r() >= gp) continue;
       let size = 2; if(r() < .35) size++; if(r() < .2) size++; size = Math.min(size, D.gmax);
@@ -771,11 +792,11 @@ function tryBuild(n, base, r, useKeys, useObs, ease){
       if(mem.length >= 2) mem.forEach(m => m.group = mem);
     }
   }
-  if(mechOn('mystery', n)){ const pm = .1 + Math.min(n, 50) * .003; cols.forEach(col => col.forEach((b, rw) => { if(rw >= 1 && !b.group && r() < pm) b.myst = true; })); }
+  if(mechOn('mystery', n)){ const pm = .1 + Math.min(n, 50) * .003 + BUILD_TIER * .06; cols.forEach(col => col.forEach((b, rw) => { if(rw >= 1 && !b.group && r() < pm) b.myst = true; })); }
   for(const k of keys){
     const cand = []; cols.forEach(col => col.forEach((b, rw) => { if(rw >= Math.floor(rows * .45) && !b.group && b.lock < 0) cand.push(b); }));
     if(!cand.length) return null;
-    shuffleArr(r, cand); const nl = Math.min(cand.length, ri(r, 1, 2)); for(let j = 0; j < nl; j++) cand[j].lock = k.id;
+    shuffleArr(r, cand); const nl = Math.min(cand.length, ri(r, 1, 2) + (BUILD_TIER > 1 ? 1 : 0)); for(let j = 0; j < nl; j++) cand[j].lock = k.id;
   }
   const L = { W, H, tile, kind, rockHp, rockMax: rockHp.slice(), doorAt, keyAt, doors, keys, cols, pal: base.pal, base, n };
   if(!simulate(L)) return null;
@@ -834,18 +855,34 @@ function buildLevel(n, pic){
   const sz = boardSize();
   const base = frameAspect(pic || (settings.pics !== 'classic' ? picFor(n, sz)
     : shadePic(SCENES[(n - 1) % SCENES.length](sz, sz, rngOf(n * 7919 + 13)), settings.shade)));
-  let fallback = null;
-  for(let at = 0; at < 60; at++){
-    const r = rngOf(n * 104729 + at * 31 + 1), ease = Math.min(1, at / 24);
-    const L = tryBuild(n, base, r, at < 36, at < 50, ease);
-    if(!L) continue;
-    if(simulateSlots(L, Math.max(3, settings.slots - 1))) return L;
-    if(!fallback) fallback = L;
-  }
+  const tier = pic ? 0 : levelTier(n), S = settings.slots;
+  let fallback = null, okFull = null;
+  try {
+    for(let tt = tier; tt >= 0; tt--){
+      BUILD_TIER = tt;
+      const tries = tt ? 40 : 60;
+      for(let at = 0; at < tries; at++){
+        const r = rngOf(n * 104729 + at * 31 + 1 + tt * 7777), ease = tt ? Math.min(.5, at / 60) : Math.min(1, at / 24);
+        const L = tryBuild(n, base, r, tt > 0 || at < 36, tt > 0 || at < 50, ease);
+        if(!L) continue;
+        if(tt === 0){ if(simulateSlots(L, Math.max(3, S - 1))){ L.tier = 0; return L; } if(!fallback) fallback = L; continue; }
+        // hard tiers: must be beatable with your slots, and ideally not with one fewer (no slack)
+        // Hard: one step tougher boxes and mechanics, still beatable with a spare slot.
+        if(tt === 1){ if(simulateSlots(L, Math.max(3, S - 1))){ L.tier = 1; return L; } continue; }
+        // Super Hard: needs every slot, but must survive play orders that break ties differently (not a coin flip)
+        if(!simulateSlots(L, S)) continue;
+        let alt = 0; for(let q = 0; q < 3; q++) if(simulateSlots(L, S, rngOf(n * 31 + at * 7 + q))) alt++;
+        if(alt < 3) continue;
+        if(!simulateSlots(L, Math.max(2, S - 1))){ L.tier = tt; return L; }
+        if(!okFull){ okFull = L; okFull.tier = tt; }
+      }
+      if(okFull) return okFull;
+    }
+  } finally { BUILD_TIER = 0; }
   return fallback || tryBuild(n, base, rngOf(n), false, false, 1);
 }
 // Plays the level greedily with the real slot count; a level is only kept if this succeeds.
-function simulateSlots(L, S){
+function simulateSlots(L, S, rr){
   const { W, H } = L, N = W * H;
   const tile = L.tile.slice(), kind = L.kind.slice(), rock = L.rockHp.slice();
   const doors = L.doors.map(d => ({ ...d })), keyGot = L.keys.map(() => false);
@@ -874,7 +911,8 @@ function simulateSlots(L, S){
     for(;;){
       const free = S - slots.length; if(free <= 0) break;
       let best = null, bestScore = -1;
-      for(const col of cols){ const b = col[0]; if(!b || locked(b)) continue; const g = b.group || [b];
+      const order = cols.map((_, k) => k); if(rr) shuffleArr(rr, order);
+      for(const k of order){ const col = cols[k], b = col[0]; if(!b || locked(b)) continue; const g = b.group || [b];
         if(g.length > free || g.some(locked) || (g.length > 1 && !groupFront(cols, g))) continue;
         const sc = g.filter(m => exposed.has(m.color)).length / g.length; if(sc > bestScore){ bestScore = sc; best = g; } }
       if(!best) break;
@@ -965,7 +1003,11 @@ function startLevel(n, pic){
   G.basePal = L.pal.slice(); G.spot = -1; G.theme = THEMES[pic ? 0 : (n - 1) % THEMES.length]; applyTheme(G.theme); applyPalette();
   G.tilesLeft = 0; for(let i = 0; i < G.tile.length; i++) if(G.tile[i] >= 0) G.tilesLeft++;
   changed();
-  $('#title').textContent = pic ? 'Your picture' : 'Level ' + n;
+  $('#title').textContent = pic ? 'Your picture' : 'Level ' + n + (stars[n] ? ' ★' : '');
+  G.tierN = L.tier || 0; G.used = false;
+  const hs = $('#hardSplash'); hs.className = ''; hs.hidden = !G.tierN;
+  if(G.tierN){ hs.textContent = G.tierN > 1 ? 'SUPER HARD' : 'HARD LEVEL'; hs.classList.add(G.tierN > 1 ? 'super' : 'hard'); void hs.offsetWidth; hs.classList.add('show'); }
+  $('#title').classList.toggle('hardT', G.tierN > 0);
   mode = null; setMode(null);
   ['#mWin', '#mJam', '#mVac'].forEach(m => $(m).hidden = true);
   buildSlots(); trayDirty = true; layout();
@@ -1120,7 +1162,21 @@ function boxDone(b){
 function unlink(b){ const g = b.group; if(!g) return; g.splice(g.indexOf(b), 1); b.group = null; if(g.length === 1) g[0].group = null; g.forEach(boxDone); }
 
 /* ---------------- update ---------------- */
+// When only a trickle of ants can work (a narrow opening), run at double speed until the crowd is back.
+function tightCheck(dt){
+  if(!settings.tightBoost || G.won){ G.boost = 1; return; }
+  const waiting = G.slots.some(b => b && b.rem > 0), n = G.ants.length;
+  if(G.boost > 1){ if(!waiting || n >= 5) { G.tightT = 0; G.boost = 1; } }
+  else { G.tightT = waiting && n <= 2 ? (G.tightT || 0) + dt : 0; if(G.tightT > .8 && settings.speed < 8) G.boost = 2; }
+  const lbl = speedLabel(settings.speed) + (G.boost > 1 ? ' ⚡' : '');
+  if($('#btnSpeed').textContent !== lbl) $('#btnSpeed').textContent = lbl;
+}
 function update(dt){
+  tightCheck(dt);
+  const base = settings.speed; if(G.boost > 1) settings.speed = Math.min(8, base * G.boost);
+  try { updateInner(dt); } finally { settings.speed = base; }
+}
+function updateInner(dt){
   const sdt = dt * settings.speed;
   G.slots.forEach((b, si) => {
     if(!b || b.rem <= 0) return;
@@ -1520,13 +1576,13 @@ function setMode(m){ mode = m; document.querySelectorAll('.boost').forEach(b => 
 function booster(k){
   if(k !== 'pick') sfx('whoosh');
   $('#mJam').hidden = true;
-  if(k === 'slot'){ if(G.slots.length >= 7){ banner('Seven slots is the most that fit.'); return; } G.slots.push(null); buildSlots(); banner('Slot added.'); }
+  if(k === 'slot'){ if(G.slots.length >= 7){ banner('Seven slots is the most that fit.'); return; } G.slots.push(null); buildSlots(); G.used = true; banner('Slot added.'); }
   else if(k === 'shuffle'){
     const pos = [], items = [];
     G.cols.forEach((col, ci) => col.forEach((b, rw) => { if(!b.group && !(b.lock >= 0 && !G.keys[b.lock].got)){ pos.push([ci, rw]); items.push(b); } }));
     if(items.length < 2){ banner('Nothing to shuffle.'); return; }
     shuffleArr(Math.random, items); pos.forEach(([ci, rw], j) => { G.cols[ci][rw] = items[j]; });
-    trayDirty = true; banner('Tray shuffled.');
+    trayDirty = true; G.used = true; banner('Tray shuffled.');
   }
   else if(k === 'pick'){ setMode(mode === 'pick' ? null : 'pick'); }
   else if(k === 'vac'){
@@ -1544,9 +1600,10 @@ function slotTap(i){
   G.slots[i] = null;
   unlink(b);
   b.count = b.rem; let ci = 0; G.cols.forEach((c, k) => { if(c.length < G.cols[ci].length) ci = k; });
-  G.cols[ci].unshift(b); setMode(null); trayDirty = true; uiDirty = true;
+  G.cols[ci].unshift(b); setMode(null); trayDirty = true; uiDirty = true; G.used = true;
 }
 function vacuum(c){
+  G.used = true;
   for(let i = 0; i < G.tile.length; i++) if(G.tile[i] === c){ G.tile[i] = -1; G.claimed[i] = 0; if(G.kind[i] === 1) G.kind[i] = 0; }
   for(const d of G.doors) if(d.color === c && d.hp > 0){ d.hp = 0; openDoor(d); }
   const gone = [...G.slots.filter(b => b && b.color === c), ...G.cols.flat().filter(b => b.color === c)];
@@ -1567,6 +1624,12 @@ function showWin(){
   c.width = b.W * k; c.height = b.H * k; x.clearRect(0, 0, c.width, c.height);
   for(let y = 0; y < b.H; y++) for(let xx = 0; xx < b.W; xx++){ const v = b.grid[y * b.W + xx]; if(v >= 0){ x.fillStyle = b.pal[v]; x.fillRect(xx * k, y * k, k, k); } }
   $('#winTitle').textContent = G.base.name || 'Picture cleared';
+  const earned = !G.used, had = !importedPic && !!stars[level];
+  if(earned && !importedPic){ stars[level] = 1; store(); }
+  $('#winStar').classList.toggle('off', !earned && !had);
+  $('#winText').textContent = earned ? (had ? 'Star kept. No power-ups used.' : 'Star earned. No power-ups used.')
+    : had ? 'You already have this level\'s star.' : 'Clear it with no power-ups to earn its star.';
+  if(!importedPic) $('#winText').textContent += ' ' + Object.keys(stars).length + ' ★ total.';
   $('#mWin').hidden = false;
 }
 $('#winNext').onclick = () => { if(!importedPic){ level++; store(); } startLevel(level); };
@@ -1594,14 +1657,14 @@ function openSettings(){
   seg('#sSize', [['S', 'S'], ['M', 'M'], ['L', 'L'], ['XL', 'XL'], ['XXL', 'XXL']], 'size');
   seg('#sContrast', [['normal', 'Normal'], ['boost', 'Boosted']], 'contrast', applyPalette);
   seg('#sAnt', [['S', 'S'], ['M', 'M'], ['L', 'L'], ['XL', 'XL']], 'antSize');
-  $('#sAuto').checked = settings.autoFinish; $('#sHold').checked = settings.holdSpot; $('#sHap').checked = settings.haptics; $('#sVol').value = settings.vol; $('#sVolV').textContent = Math.round(settings.vol * 100) + '%';
+  $('#sHardL').checked = settings.hardLevels; $('#sTight').checked = settings.tightBoost; $('#sAuto').checked = settings.autoFinish; $('#sHold').checked = settings.holdSpot; $('#sHap').checked = settings.haptics; $('#sVol').value = settings.vol; $('#sVolV').textContent = Math.round(settings.vol * 100) + '%';
   seg('#sShelf', [['compact', 'Compact'], ['normal', 'Normal'], ['large', 'Large']], 'shelf', () => { applyShelf(); trayDirty = true; requestAnimationFrame(layout); });
   seg('#sShape', [['fit', 'Fill screen'], ['square', 'Frame']], 'shape');
   seg('#sPics', [['all', 'All sets'], ['noto', 'Noto 3D'], ['fluent', 'Fluent 3D'], ['retro', 'Retro'], ['classic', 'Classic']], 'pics');
   $('#sSym').checked = settings.symbols;
   seg('#sShade', [['off', 'Flat'], ['soft', 'Soft'], ['rich', 'Rich']], 'shade');
   seg('#sWander', [['off', 'Off'], ['little', 'A little'], ['more', 'More']], 'wander');
-  seg('#sDiff', [['relaxed', 'Relaxed'], ['normal', 'Normal'], ['hard', 'Hard'], ['brutal', 'Brutal']], 'diff');
+  seg('#sDiff', [['relaxed', 'Relaxed'], ['normal', 'Normal'], ['hard', 'Hard'], ['brutal', 'Brutal'], ['savage', 'Savage']], 'diff');
   $('#mSet').hidden = false;
 }
 function closeSettings(){ $('#mSet').hidden = true; paused = false; last = performance.now(); }
@@ -1611,6 +1674,8 @@ $('#sRestart').onclick = () => { closeSettings(); startLevel(level, importedPic)
 $('#sSpeed').oninput = e => { settings.speed = +e.target.value; syncSpeed(); store(); };
 $('#sHints').onchange = e => { settings.hints = e.target.checked; trayDirty = true; store(); };
 $('#sVol').oninput = e => { settings.vol = +e.target.value; $('#sVolV').textContent = Math.round(settings.vol * 100) + '%'; store(); if(audio()){ master.gain.value = settings.vol; sfx('place'); } };
+$('#sHardL').onchange = e => { settings.hardLevels = e.target.checked; store(); };
+$('#sTight').onchange = e => { settings.tightBoost = e.target.checked; store(); };
 $('#sAuto').onchange = e => { settings.autoFinish = e.target.checked; store(); };
 $('#sHold').onchange = e => { settings.holdSpot = e.target.checked; store(); };
 $('#sHap').onchange = e => { settings.haptics = e.target.checked; store(); if(settings.haptics) buzz(true); };
