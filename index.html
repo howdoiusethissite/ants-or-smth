@@ -147,16 +147,20 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
 .levnav{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin:4px 0 8px; font-weight:700; }
 .levnav .btn{ flex:none; min-width:52px; padding:8px 12px; }
 .levgrid{ display:grid; grid-template-columns:repeat(5, 1fr); gap:7px; }
-.lv{ position:relative; border:2px solid #e2d3b5; border-radius:12px; background:#f6ead0; color:var(--ink); padding:5px 2px 4px; display:flex; flex-direction:column; align-items:center; gap:3px; font-weight:700; font-size:1rem; }
+.lv{ position:relative; border:2px solid #e2d3b5; border-radius:12px; background:#f6ead0; color:var(--ink); padding:4px 4px 5px; display:flex; flex-direction:column; align-items:center; gap:4px; font-weight:700; font-size:1rem; min-width:0; }
+.lv .th{ display:block; width:100%; aspect-ratio:1; image-rendering:pixelated; border-radius:8px; background:#efe3c9; }
+.lv .n{ position:absolute; left:2px; top:2px; min-width:22px; padding:1px 5px; border-radius:9px 0 9px 0; background:rgba(43,33,25,.82); color:#fff8ea; font-size:.78rem; line-height:1.25; text-align:center; }
+.lv.cur .n{ background:#c98a1b; }
 .lv.cur{ background:var(--honey); }
 .lv.t1{ border-color:#de4aaa; } .lv.t2{ border-color:#c81e32; border-width:3px; }
-.lv .st{ position:absolute; right:3px; top:0; color:#e0a000; font-size:.85rem; }
+.lv .st{ position:absolute; right:2px; top:2px; padding:0 4px; border-radius:0 9px 0 9px; background:rgba(255,248,234,.92); color:#e0a000; font-size:.85rem; line-height:1.3; }
 .lv .dots{ display:flex; gap:2px; }
 .lv .dots i{ width:8px; height:8px; border-radius:50%; border:2px solid #cbbc9f; background:transparent; }
 .lv .dots i.star{ background:#f2b33d; }
 .lv .dots i.shadow{ background:#5b4f6e; }
 .lv .st.sh{ color:#5b4f6e; }
 .lv .dots i.g{ border-color:#3f9a3a; } .lv .dots i.a{ border-color:#d98a12; } .lv .dots i.x{ border-color:#c62f3a; background:#c62f3a; } .lv .dots i.u{ border-color:#8a7763; }
+.lv .dots i.f{ border-color:#c62f3a; border-style:dashed; }
 .lv .dots i.run{ border-color:var(--ink); border-style:dotted; }
 .levkey{ font-size:.75rem; color:#8a7763; margin:8px 0 2px; line-height:1.35; }
 @media (prefers-reduced-motion: reduce){ .shake,.pop{ animation:none; } }
@@ -223,7 +227,7 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
   <p id="levSum"></p>
   <div class="levnav"><button class="btn" id="levPrev">‹</button><span id="levRange"></span><button class="btn" id="levNext">›</button></div>
   <div class="levgrid" id="levGrid"></div>
-  <div class="levkey">Dots, left to right: Relaxed, Normal, Hard, Brutal, Savage. Gold fill: starred there. Dark fill: shadow star (won with ant wandering on). After a check, ring color: <b style="color:#3f9a3a">plain play wins</b>, <b style="color:#d98a12">needs planning</b>, <b style="color:#c62f3a">impossible</b>, <b style="color:#8a7763">gave up</b>. Pink border: Hard level. Red border: Super Hard.</div>
+  <div class="levkey">Dots, left to right: Relaxed, Normal, Hard, Brutal, Savage. Gold fill: starred there. Dark fill: shadow star (won with ant wandering on). After a check, ring color: <b style="color:#3f9a3a">plain play wins</b>, <b style="color:#d98a12">needs planning</b>, <b style="color:#c62f3a">impossible</b>, dashed red: the solver's win falls apart with the real ants, <b style="color:#8a7763">gave up</b>. Pink border: Hard level. Red border: Super Hard.</div>
   <div class="row"><label for="levAllD">Check every difficulty<small>Off checks only your current one (much faster). Uses your current slots, columns, size and mechanics</small></label><input type="checkbox" id="levAllD"></div>
   <p id="levStatus" style="min-height:1.4em;margin:6px 0 0"></p>
   <div class="btns">
@@ -239,8 +243,9 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
   <div class="row"><label for="sSpeed">Speed<small id="sSpeedV">1×</small></label><input type="range" id="sSpeed" min="0.25" max="10" step="0.25"></div>
   <div class="row"><label for="sVol">Sound<small id="sVolV">60%</small></label><input type="range" id="sVol" min="0" max="1" step="0.05"></div>
   <div class="row"><label for="sHardL">Hard levels<small>Every 5th level is Hard and every 10th Super Hard: bigger boxes, no spare slot, more links and locks</small></label><input type="checkbox" id="sHardL"></div>
-  <div class="row" style="flex-wrap:wrap"><label>Trickle speedup<small>Doubles the speed (up to 8x) while the ants dribble out. One ant: only one or two ants on the move. Slow flow: every working box is sending about one ant a second or less, however many colors are going</small></label><div class="seg" id="sTrickle"></div></div>
+  <div class="row" style="flex-wrap:wrap"><label>Trickle speedup<small>Doubles the speed (up to 10x) while the ants dribble out. One ant: only one or two ants on the move. Slow flow: any one box with reachable cubes is sending about one ant a second or less</small></label><div class="seg" id="sTrickle"></div></div>
   <div class="row"><label for="sAuto">Auto-finish<small>When every box left fits in the free slots, place them and speed up to 4x</small></label><input type="checkbox" id="sAuto"></div>
+  <div class="row" style="flex-wrap:wrap"><label>Frame rate<small id="sFpsV">Max follows your screen</small></label><div class="seg" id="sFps" style="flex-wrap:wrap"></div></div>
   <div class="row"><label for="sHold">Hold to highlight<small>Hold a box for half a second to light up its tiles</small></label><input type="checkbox" id="sHold"></div>
   <div class="row"><label>Ant size</label><div class="seg" id="sAnt"></div></div>
   <div class="row"><label for="sHap">Vibration<small>Tiny buzz when an ant grabs a cube. Android Chrome only, and only when the file is opened directly</small></label><input type="checkbox" id="sHap"></div>
@@ -280,7 +285,7 @@ const stage = $('#stage'), slotsEl = $('#slots'), trayEl = $('#tray');
 
 /* ---------------- persistence ---------------- */
 const SKEY = 'antline.v1';
-const DEFAULTS = { speed:1, slots:5, cols:4, size:'L', hints:false, ramp:true, antSize:'L', haptics:true, vol:.6, holdSpot:true, pics:'all', shelf:'compact', autoFinish:true, hardLevels:true, tightBoost:true, K:7, diff:'normal', shade:'soft', wander:'little', contrast:'normal', symbols:false, shape:'fit',
+const DEFAULTS = { speed:1, slots:5, cols:4, size:'L', hints:false, ramp:true, antSize:'L', haptics:true, vol:.6, holdSpot:true, pics:'all', shelf:'compact', autoFinish:true, hardLevels:true, tightBoost:true, K:7, diff:'normal', shade:'soft', wander:'little', contrast:'normal', symbols:false, shape:'fit', fps:0,
   mech:{ pairs:true, mystery:true, doors:true, stones:true, keys:true } };
 function loadSave(){ try{ const r = localStorage.getItem(SKEY); if(r) return JSON.parse(r); }catch(e){} return null; }
 const saved = loadSave();
@@ -907,10 +912,13 @@ function frameAspect(b){
 const VARIANTS = [{}, { seed: 11 }, { seed: 23, waveK: 1.6 }];
 function variantOpt(v, L, base){ const o = Object.assign({}, base); if(v.seed) o.seed = v.seed; if(v.waveK){ let t = 0; for(let i = 0; i < L.tile.length; i++) if(L.tile[i] >= 0) t++; o.wave = Math.max(3, Math.round(14 * Math.sqrt(Math.max(60, t) / 484) * v.waveK)); } return o; }
 const robust = (L, S, base) => VARIANTS.every(v => solveLevel(L, S, variantOpt(v, L, base)).ok === true);
+// Then the real game engine has to win it too (playtest), so a model-only win never reaches you.
 function levelPasses(L, tier, S){
   const tough = tier > 0 || settings.diff === 'brutal' || settings.diff === 'savage';
-  if(!tough) return robust(L, S, { greedy: true, nodes: 1e9, ms: 1e9 });
-  return robust(L, S, { nodes: 600, ms: 700 });
+  if(!tough){ if(!robust(L, S, { greedy: true, nodes: 1e9, ms: 1e9 })) return false;
+    return playtest(L, S, solveLevel(L, S, { greedy: true, nodes: 1e9, ms: 1e9 }).plan).ok === true; }
+  if(!robust(L, S, { nodes: 600, ms: 700 })) return false;
+  return realWin(L, S, solveLevel(L, S, { nodes: 600, ms: 700 }));
 }
 function buildLevel(n, pic){
   const sz = boardSize();
@@ -936,7 +944,7 @@ function buildLevel(n, pic){
     }
     // last resort: no keys, doors or stones, gentlest boxes, still checked
     BUILD_TIER = 0;
-    for(let at = 0; at < 30; at++){ const L = tryBuild(n, base, rngOf(n * 7 + at), false, false, 1); if(L && solveLevel(L, S, { nodes: 400, ms: 500 }).ok === true){ L.tier = 0; return L; } }
+    for(let at = 0; at < 30; at++){ const L = tryBuild(n, base, rngOf(n * 7 + at), false, false, 1); if(L && realWin(L, S, solveLevel(L, S, { nodes: 400, ms: 500 }))){ L.tier = 0; return L; } }
   } finally { BUILD_TIER = 0; }
   const L = tryBuild(n, base, rngOf(n), false, false, 1); if(L){ L.tier = 0; L.unverified = true; } return L;
 }
@@ -993,15 +1001,26 @@ function simulateSlots(L, S, rr){
    and a pulled box takes the first free slot (a linked group takes the first run of free slots side by side), as in pull().
    Search: depth-first over which box to pull, best-looking pull first, with a memo of positions already shown to fail.
    ok:true (with the pull plan), ok:false (every line fails), ok:null (gave up on the node or time budget). */
+// Board geometry for a W x H board on this screen. layout() and the solver both use it, so the solver's ants enter the
+// board at exactly the cells the real ants do (an off-by-one entry changes which cubes get eaten first).
+function geomFor(W, H){
+  const r = stage.getBoundingClientRect(), cw0 = r.width || 400, ch0 = r.height || 440, dpr = Math.min(3, window.devicePixelRatio || 1);
+  let s0 = Math.min((cw0 - 10) / (W + 1.6), (ch0 - 4) / (H + 2.2 + LANE)); s0 = Math.max(3, Math.floor(s0 * dpr) / dpr);
+  const bx0 = Math.round((cw0 - W * s0) / 2), frameH = (H + 1.6) * s0 + s0 * .5, spare = ch0 - frameH - LANE * s0;
+  return { cw: cw0, ch: ch0, s: s0, bx: bx0, by: Math.round(s0 * .8 + 4 + Math.max(0, spare) * .25) };
+}
+function slotCentres(S, cw0){
+  // the real slot positions when the slot row is on screen, else the same CSS rules worked out by hand
+  if(slotX.length === S && slotX.every(x => x > 0)) return slotX.slice();
+  const span = Math.min(420, cw0) - 44, sw = (span - 7 * (S - 1)) / S, left = (cw0 - Math.min(420, cw0)) / 2 + 22;
+  return [...Array(S)].map((_, i) => left + i * (sw + 7) + sw / 2);
+}
 function slotEntries(W, H, S){
-  // where each slot's ants enter the board, worked out from the same layout rules the screen uses
-  const r = stage.getBoundingClientRect(), cw = r.width || 400, chh = r.height || 440;
-  const s = Math.min((cw - 10) / (W + 1.6), (chh - 4) / (H + 2.2 + LANE)), bx = (cw - W * s) / 2;
-  const span = Math.min(420, cw) - 44, sw = (span - 7 * (S - 1)) / S, left = (cw - Math.min(420, cw)) / 2 + 22;
-  const out = [...Array(S)].map((_, i) => Math.max(-1, Math.min(W, Math.round((left + i * (sw + 7) + sw / 2 - bx) / s - .5))));
-  // cells an ant walks from its slot up to the board edge
-  const frameH = (H + 1.6) * s + s * .5, spare = chh - frameH - LANE * s, by = s * .8 + 4 + Math.max(0, spare) * .25;
-  out.approach = Math.max(1, (chh + s * 1.2 - (by + (H + .5) * s)) / s);
+  // where each slot's ants enter the board: the same sums as entryFor() on the real board
+  const g = geomFor(W, H);
+  const out = slotCentres(S, g.cw).map(x => Math.max(-1, Math.min(W, Math.round((x - g.bx) / g.s - .5))));
+  // cells an ant walks from its slot up to the board edge (same as liveEntries)
+  out.approach = Math.max(1, (g.ch + g.s * 1.2 - (g.by + (H + .5) * g.s)) / g.s);
   return out;
 }
 function solveLevel(src, S, opt){
@@ -1199,6 +1218,7 @@ function applyPalette(){
 
 /* ---------------- game state ---------------- */
 let G = null, importedPic = null, paused = false;
+let HEADLESS = false;   // true while playtest() runs the real game engine off screen: no sound, banners, popups or drawing
 let s = 16, bx = 0, by = 0, cw = 0, ch = 0, DPR = 1, nest = { x: 0, y: 0 }, slotX = [];
 const LANE = 3, SPAWN = .16, MAXP = 14;
 let bfsCache = new Map(), uiDirty = true, trayDirty = true, mode = null, jamTimer = 0;
@@ -1262,7 +1282,8 @@ function nestE(){ return ext(Math.floor(G.W / 2), G.H); }
 
 const WANDER = { off: 0, little: .18, more: .4 };
 // With wandering off the ants are fully predictable (no random tiebreak), which is what the solver assumes.
-const jitter = () => settings.wander === 'off' ? 0 : Math.random() * 1.5;
+const wanderNow = () => (G && G.bot) || HEADLESS ? 'off' : settings.wander;
+const jitter = () => wanderNow() === 'off' ? 0 : Math.random() * 1.5;
 function findTarget(color, entry){
   const { dist } = bfs(entry), W = G.W, cand = [];
   for(let i = 0; i < G.tile.length; i++){
@@ -1280,7 +1301,7 @@ function findTarget(color, entry){
   }
   if(!cand.length) return null;
   let best = cand[0]; for(const c of cand) if(c.d < best.d) best = c;
-  if(Math.random() < (WANDER[settings.wander] || 0)){
+  if(Math.random() < (WANDER[wanderNow()] || 0)){
     const near = cand.filter(c => c.d <= best.d + 7);
     if(near.length > 1) return near[Math.floor(Math.random() * near.length)].t;
   }
@@ -1300,7 +1321,7 @@ function spawnAnt(b, si, t){
   const sc = cellC(t.stand), tc = { x: bx + (t.tx + .5) * s, y: by + (t.ty + .5) * s };
   pts.push({ x: sc.x + (tc.x - sc.x) * .4, y: sc.y + (tc.y - sc.y) * .4 });
   const sm = smoothPath(pts);
-  G.ants.push({ box: b, color: b.color, si, tgt: t, pts: sm, i: 0, x: sm[0].x, y: sm[0].y, ang: -Math.PI / 2, phase: Math.random() * 6, state: 'go', carry: false, off: (Math.random() - .5) * .35 * s, sp: settings.wander === 'off' ? 1 : .88 + Math.random() * .24, seed: Math.random() * 6.28, age: 0 });
+  G.ants.push({ box: b, color: b.color, si, tgt: t, pts: sm, i: 0, x: sm[0].x, y: sm[0].y, ang: -Math.PI / 2, phase: Math.random() * 6, state: 'go', carry: false, off: (Math.random() - .5) * .35 * s, sp: wanderNow() === 'off' ? 1 : .88 + Math.random() * .24, seed: Math.random() * 6.28, age: 0 });
   b.tick = true;
 }
 function crackAround(i){ const W = G.W, x = i % W, y = (i / W) | 0;
@@ -1336,10 +1357,10 @@ const SFX = {
   win(){ [523, 659, 784, 1046, 1318].forEach((f, k) => tone(f, f, .35, 'triangle', .09, k * .1)); },
 };
 const SFX_GAP = { place: .04, pick: .045, drop: .06, done: .12 };
-function sfx(name){ if(!(settings.vol > 0) || !audio()) return; const now = AC.currentTime; if(sfxLast[name] && now - sfxLast[name] < (SFX_GAP[name] || 0)) return; sfxLast[name] = now; try{ SFX[name](); }catch(e){} }
+function sfx(name){ if(HEADLESS || !(settings.vol > 0) || !audio()) return; const now = AC.currentTime; if(sfxLast[name] && now - sfxLast[name] < (SFX_GAP[name] || 0)) return; sfxLast[name] = now; try{ SFX[name](); }catch(e){} }
 
 let lastBuzz = 0;
-function buzz(force){ if(!settings.haptics || !navigator.vibrate) return; const now = performance.now(); if(!force && now - lastBuzz < 70) return; lastBuzz = now; try{ navigator.vibrate(force ? 30 : 12); }catch(e){} }
+function buzz(force){ if(HEADLESS || !settings.haptics || !navigator.vibrate) return; const now = performance.now(); if(!force && now - lastBuzz < 70) return; lastBuzz = now; try{ navigator.vibrate(force ? 30 : 12); }catch(e){} }
 const PICK = .42, SINK = .32;
 function bite(a){
   const t = a.tgt; let ok = false;
@@ -1388,26 +1409,29 @@ function tightCheck(dt){
   const work = G.slots.filter(b => b && b.rem > 0), n = G.ants.length, now = G.clock || 0;
   let slow;
   if(settings.trickle === 'one') slow = work.length > 0 && n <= 2;
-  // every working box sent at most 2 ants in the last 2 game seconds (boxes stuck on a buried color count as 0)
-  else slow = work.length > 0 && now > 2 && work.every(b => (b.sent || []).filter(t => t > now - 2).length <= 2);
+  // any one box is dribbling: it has reachable cubes, has sat in its slot for 2 game seconds, is not held back by the
+  // in-flight cap, and still sent at most 2 ants in the last 2 game seconds. Boxes waiting on a buried color don't count.
+  else slow = now > 2 && work.some(b => G.exposed.has(b.color) && now - (b.placedAt || 0) >= 2 && b.pend < G.maxp
+    && (b.sent || []).filter(t => t > now - 2).length <= 2);
   if(G.boost > 1){ if(!slow){ G.tightT = 0; G.boost = 1; } }
-  else { G.tightT = slow ? (G.tightT || 0) + dt : 0; if(G.tightT > .8 && settings.speed < 8) G.boost = 2; }
+  else { G.tightT = slow ? (G.tightT || 0) + dt : 0; if(G.tightT > .8 && settings.speed < BOOST_MAX) G.boost = 2; }
   const lbl = speedLabel(settings.speed) + (G.boost > 1 ? ' ⚡' : '');
   if($('#btnSpeed').textContent !== lbl) $('#btnSpeed').textContent = lbl;
 }
 // SPD is the speed the simulation runs at this frame: the chosen speed, doubled while the trickle boost is on.
 // It used to be written into settings.speed and restored afterwards, which also undid the auto-finish 4x.
 let SPD = 1;
+const BOOST_MAX = 10;   // the trickle boost doubles the speed up to this; at 8x it lifts to 10x
 function update(dt){
   tightCheck(dt);
-  SPD = G.boost > 1 ? Math.max(settings.speed, Math.min(8, settings.speed * G.boost)) : settings.speed;
+  SPD = G.boost > 1 ? Math.max(settings.speed, Math.min(BOOST_MAX, settings.speed * G.boost)) : settings.speed;
   updateInner(dt);
   autoFinish(dt);
   autoPlay(dt);
 }
 function updateInner(dt){
   const sdt = dt * SPD; G.clock = (G.clock || 0) + sdt;
-  if(settings.wander !== 'off' && !G.won) G.wandered = true;
+  if(wanderNow() !== 'off' && !G.won) G.wandered = true;
   G.slots.forEach((b, si) => {
     if(!b || b.rem <= 0) return;
     // catch up on every ant that was due this frame: at high speed one frame covers several spawn gaps,
@@ -1464,6 +1488,7 @@ function pullable(b, free){
   return free >= g.length;
 }
 function checkJam(){
+  if(HEADLESS) return;
   if(G.won || G.ants.length || !$('#mJam').hidden || mode) return;
   for(const b of G.slots) if(b && b.rem > 0 && G.exposed.has(b.color)) return;
   const free = G.slots.filter(x => !x).length;
@@ -1620,7 +1645,7 @@ function drawCube(c, q, col, L){
   rr(c, -q / 2, -q / 2, q, q, q * .22); c.fillStyle = col; c.fill(); c.strokeStyle = '#2b2119'; c.lineWidth = Math.max(1.2, L * .045); c.stroke();
   c.fillStyle = 'rgba(255,255,255,.4)'; c.fillRect(-q * .3, -q * .34, q * .6, q * .16); c.fillStyle = 'rgba(0,0,0,.18)'; c.fillRect(-q * .34, q * .22, q * .68, q * .12);
 }
-function burst(x, y, color, n){ if(!G) return; for(let k = 0; k < n; k++) G.parts.push({ x, y, vx: (Math.random() - .5) * 140, vy: -40 - Math.random() * 110, life: .35 + Math.random() * .3, color, sz: 2 + Math.random() * 3 }); }
+function burst(x, y, color, n){ if(!G || HEADLESS) return; for(let k = 0; k < n; k++) G.parts.push({ x, y, vx: (Math.random() - .5) * 140, vy: -40 - Math.random() * 110, life: .35 + Math.random() * .3, color, sz: 2 + Math.random() * 3 }); }
 function draw(){
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, cw, ch);
   const W = G.W, H = G.H;
@@ -1666,11 +1691,8 @@ function layout(){
   const r = stage.getBoundingClientRect(); cw = r.width; ch = r.height;
   cv.width = Math.round(cw * DPR); cv.height = Math.round(ch * DPR); cv.style.width = cw + 'px'; cv.style.height = ch + 'px';
   if(!G) return;
-  s = Math.min((cw - 10) / (G.W + 1.6), (ch - 4) / (G.H + 2.2 + LANE)); s = Math.max(3, Math.floor(s * DPR) / DPR);
-  bx = Math.round((cw - G.W * s) / 2);
   // board sits in the upper part like Colony Flow; the nest goes halfway down the open space under it
-  const frameH = (G.H + 1.6) * s + s * .5, spare = ch - frameH - LANE * s;
-  by = Math.round(s * .8 + 4 + Math.max(0, spare) * .25);
+  const gm = geomFor(G.W, G.H); s = gm.s; bx = gm.bx; by = gm.by;
   const below = by + (G.H + .8) * s + s * .5;
   nest = { x: bx + (Math.floor(G.W / 2) + .5) * s, y: Math.min(ch - s * 1.2, below + Math.max(LANE * s * .5, (ch - below) * .4)) };
   G.boardDirty = true; trayDirty = true; uiDirty = true; computeSlotX();
@@ -1782,7 +1804,7 @@ function pull(ci, el){
   }
   trayDirty = true; uiDirty = true;
 }
-function place(b, i){ sfx('place'); b.myst = false; b.spawnT = 0; G.slots[i] = b; const el = slotsEl.querySelectorAll('.slot')[i]; if(el){ el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); } }
+function place(b, i){ sfx('place'); b.myst = false; b.spawnT = 0; b.placedAt = G.clock || 0; G.slots[i] = b; if(HEADLESS) return; const el = slotsEl.querySelectorAll('.slot')[i]; if(el){ el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); } }
 
 /* hold a box (tray or slot) to light up its color on the picture; tap a slot to keep it lit */
 // The tray redraws itself often, which used to swallow the finger-up event and leave highlights stuck.
@@ -1853,7 +1875,7 @@ function vacuum(c){
 
 /* ---------------- banner & modals ---------------- */
 let bannerT = 0;
-function banner(msg, ms){ const el = $('#banner'); el.textContent = msg; el.classList.remove('hide'); clearTimeout(bannerT); bannerT = setTimeout(() => el.classList.add('hide'), ms || 2200); }
+function banner(msg, ms){ if(HEADLESS) return; const el = $('#banner'); el.textContent = msg; el.classList.remove('hide'); clearTimeout(bannerT); bannerT = setTimeout(() => el.classList.add('hide'), ms || 2200); }
 function showWin(){
   sfx('win');
   const c = $('#winPic'), x = c.getContext('2d'), b = G.base.src || G.base, k = Math.floor(176 / Math.max(b.W, b.H));
@@ -1879,7 +1901,7 @@ document.querySelectorAll('[data-jam]').forEach(b => b.onclick = () => { const k
 $('#vacCancel').onclick = () => $('#mVac').hidden = true;
 document.querySelectorAll('.boost').forEach(b => b.onclick = () => booster(b.dataset.b));
 
-const SPEEDS = [1, 2, 4, 8];
+const SPEEDS = [1, 2, 4, 8, 10];
 function speedLabel(v){ return (Math.round(v * 100) / 100) + '×'; }
 function syncSpeed(){ $('#btnSpeed').textContent = speedLabel(settings.speed); $('#sSpeed').value = settings.speed; $('#sSpeedV').textContent = speedLabel(settings.speed); }
 $('#btnSpeed').onclick = () => { if(G && G.auto) G.auto.prev = null; const i = SPEEDS.indexOf(settings.speed); settings.speed = SPEEDS[(i + 1) % SPEEDS.length]; syncSpeed(); store(); };
@@ -1903,6 +1925,7 @@ function openSettings(){
   $('#sSym').checked = settings.symbols;
   seg('#sShade', [['off', 'Flat'], ['soft', 'Soft'], ['rich', 'Rich']], 'shade');
   seg('#sTrickle', [['off', 'Off'], ['one', 'One ant'], ['slow', 'Slow flow']], 'trickle');
+  seg('#sFps', [[0, 'Max'], [30, '30'], [60, '60'], [90, '90'], [120, '120'], [144, '144'], [240, '240']], 'fps', fpsNote); fpsNote();
   seg('#sWander', [['off', 'Off'], ['little', 'A little'], ['more', 'More']], 'wander');
   seg('#sDiff', [['relaxed', 'Relaxed'], ['normal', 'Normal'], ['hard', 'Hard'], ['brutal', 'Brutal'], ['savage', 'Savage']], 'diff');
   $('#mSet').hidden = false;
@@ -1972,18 +1995,98 @@ function autoPlay(dt){
   G.bot = false; banner(r.ok === false ? 'Solver: every line from here jams (the ants ate differently than it expected).' : 'Solver: nothing left to pull.', 4000);
 }
 
+/* ---------------- playtest: the real game engine, off screen ----------------
+   The solver works on a model of the ants. Before a level is trusted, playtest() runs the actual game code (same ant
+   spawning, walking, claiming and eating, with wandering off) on a copy of the board, pulling boxes the way the solver
+   planned whenever the ants go idle. If the real ants eat differently and the plan stops fitting, it can re-plan from the
+   live board (like "Watch the solver"). Only a real win counts. */
+function cloneLevel(L){
+  const map = new Map(), groups = new Map();
+  const cb = b => { if(!map.has(b)) map.set(b, Object.assign({}, b, { group: null, sent: null, rem: b.count, pend: 0, spawnT: 0, cleared: false })); return map.get(b); };
+  const cols = L.cols.map(c => c.map(cb));
+  for(const [o, n] of map) if(o.group){ if(!groups.has(o.group)) groups.set(o.group, o.group.map(cb)); n.group = groups.get(o.group); }
+  return Object.assign({}, L, { tile: L.tile.slice(), kind: L.kind.slice(), rockHp: L.rockHp.slice(), doorAt: L.doorAt.slice(),
+    keyAt: L.keyAt ? L.keyAt.slice() : L.keyAt, doors: L.doors.map(d => Object.assign({}, d, { claimed: 0 })), keys: L.keys.map(k => Object.assign({}, k, { got: false })), cols });
+}
+function playtest(L, S, plan, opt){
+  opt = opt || {};
+  const keep = { G, s, bx, by, nest, bfsCache, slotX, mode, jamTimer, uiDirty, trayDirty, SPD, speed: settings.speed };
+  HEADLESS = true;
+  try{
+    const g = geomFor(L.W, L.H), sx = slotCentres(S, g.cw);
+    s = g.s; bx = g.bx; by = g.by; slotX = sx; bfsCache = new Map(); mode = null; jamTimer = 1e9;
+    const below = by + (L.H + .8) * s + s * .5;
+    nest = { x: bx + (Math.floor(L.W / 2) + .5) * s, y: Math.min(g.ch - s * 1.2, below + Math.max(LANE * s * .5, (g.ch - below) * .4)) };
+    const C = cloneLevel(L), tc = tileCount(C);
+    G = Object.assign(C, { slots: new Array(S).fill(null), ants: [], parts: [], fx: [], claimed: new Uint8Array(C.W * C.H), ver: 0, won: false,
+      boardDirty: false, dirty: new Set(), walk: 9 * Math.sqrt(Math.max(C.W, C.H) / 22), rate: Math.sqrt(tc / 484), maxp: Math.round(14 * Math.sqrt(tc / 484)), boost: 1, clock: 0 });
+    G.tilesLeft = 0; for(let i = 0; i < G.tile.length; i++) if(G.tile[i] >= 0) G.tilesLeft++;
+    changed();
+    settings.speed = SPD = opt.speed || 4;
+    const dt = opt.dt || 1 / 60, until = performance.now() + (opt.ms || 20000);
+    let step = 0, replans = 0, own = plan ? plan.slice() : [];
+    for(let f = 0; f < 200000; f++){
+      SPD = settings.speed; updateInner(dt);
+      if(G.won) return { ok: true, frames: f, replans };
+      if(f % 600 === 0 && performance.now() > until) return { ok: null, why: 'time', replans };
+      if(G.ants.length) continue;
+      if(G.slots.some(b => b && b.rem > 0 && G.exposed.has(b.color))) continue;
+      if(G.tilesLeft <= 0 && G.doors.every(d => d.hp <= 0)) continue;
+      const free = G.slots.filter(x => !x).length;
+      let ci = step < own.length ? own[step] : null;
+      if(ci == null || !free || !pullable(G.cols[ci][0], free)){
+        // the plan no longer fits the board the real ants left: re-plan from here, as the watch-the-solver bot does
+        if(!opt.replan || !free || replans >= 40) return { ok: false, why: free ? 'plan broke' : 'jammed', step, replans };
+        replans++;
+        const en = liveEntries();
+        let r = solveLevel(liveState(), S, { nodes: 900, ms: 300, entries: en });
+        if(r.ok === null) r = solveLevel(liveState(), S, { nodes: 4000, ms: 1500, entries: en });
+        if(!r.ok || !r.plan.length) return { ok: false, why: 'jammed', step, replans };
+        own = own.slice(0, step).concat(r.plan); ci = own[step];
+        if(!pullable(G.cols[ci][0], free)) return { ok: false, why: 'jammed', step, replans };
+      }
+      pull(ci, null); step++;
+    }
+    return { ok: false, why: 'timeout', replans };
+  } finally {
+    G = keep.G; s = keep.s; bx = keep.bx; by = keep.by; nest = keep.nest; bfsCache = keep.bfsCache; slotX = keep.slotX; mode = keep.mode;
+    jamTimer = keep.jamTimer; uiDirty = keep.uiDirty; trayDirty = keep.trayDirty; SPD = keep.SPD; settings.speed = keep.speed; HEADLESS = false;
+  }
+}
+// A solver win only counts once the real engine wins it too: first the exact plan, then with re-planning.
+function realWin(L, S, r){ if(!r || r.ok !== true) return false;
+  return playtest(L, S, r.plan).ok === true || playtest(L, S, r.plan, { replan: true }).ok === true; }
+
 /* ---------------- level browser ---------------- */
 const LEV_PAGE = 30, levCheck = new Map();   // "level|difficulty|setup" -> 'g' | 'a' | 'x' | 'u'
 let levStart = 1, levBusy = false;
 const setupKey = () => [settings.slots, settings.cols, settings.size, settings.pics, settings.shade, settings.shape, settings.ramp, settings.hardLevels, JSON.stringify(settings.mech), Math.round(stage.clientWidth), Math.round(stage.clientHeight)].join(',');
 function levelsTop(){ let m = level; for(const k in stars) m = Math.max(m, +k); return m; }
+// Small preview of a level's picture for the level browser (the same picture buildLevel uses, before the frame is added)
+const thumbCache = new Map();
+function levelPic(n){
+  const sz = boardSize(), key = n + '|' + settings.pics + '|' + sz + '|' + settings.shade;
+  let p = thumbCache.get(key); if(p) return p;
+  p = settings.pics !== 'classic' ? picFor(n, sz) : shadePic(SCENES[(n - 1) % SCENES.length](sz, sz, rngOf(n * 7919 + 13)), settings.shade);
+  thumbCache.set(key, p); return p;
+}
+function drawThumb(cvs, p){
+  const M = Math.max(p.W, p.H), ox = (M - p.W) >> 1, oy = (M - p.H) >> 1; cvs.width = M; cvs.height = M;
+  const x = cvs.getContext('2d'), img = x.createImageData(M, M), d = img.data;
+  for(let y = 0; y < p.H; y++) for(let xx = 0; xx < p.W; xx++){ const v = p.grid[y * p.W + xx]; if(v < 0) continue;
+    const [r, g, b] = hexToRgb(p.pal[v]), o = ((y + oy) * M + xx + ox) * 4; d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255; }
+  x.putImageData(img, 0, 0);
+}
 function renderLevels(){
   const grid = $('#levGrid'); grid.innerHTML = ''; const sk = setupKey();
   for(let n = levStart; n < levStart + LEV_PAGE; n++){
     const b = document.createElement('button'), tier = levelTier(n);
     b.className = 'lv' + (n === level ? ' cur' : '') + (tier ? ' t' + tier : '');
     const dots = DIFF_ORDER.map(d => { const c = levCheck.get(n + '|' + d + '|' + sk) || ''; const st = (starsD[n] || []).includes(d) ? ' star' : (shadowD[n] || []).includes(d) ? ' shadow' : ''; return `<i class="${c}${st}"></i>`; }).join('');
-    b.innerHTML = `<span>${n}</span>${stars[n] ? '<span class="st">★</span>' : shadowD[n] ? '<span class="st sh">★</span>' : ''}<span class="dots">${dots}</span>`;
+    let name = '';
+    try{ const p = levelPic(n); name = p.name || ''; const th = document.createElement('canvas'); th.className = 'th'; drawThumb(th, p); b.appendChild(th); }catch(_){}
+    b.insertAdjacentHTML('beforeend', `<span class="n">${n}</span>${stars[n] ? '<span class="st">★</span>' : shadowD[n] ? '<span class="st sh">★</span>' : ''}<span class="dots">${dots}</span>`);
+    b.title = 'Level ' + n + (name ? ': ' + name : ''); b.setAttribute('aria-label', b.title + (tier ? (tier > 1 ? ', Super Hard' : ', Hard') : ''));
     b.onclick = () => { if(levBusy) return; level = n; store(); closeLevels(); startLevel(level); };
     grid.appendChild(b);
   }
@@ -2005,15 +2108,19 @@ $('#levCheck').onclick = () => {
   const diffs = $('#levAllD').checked ? DIFF_ORDER.slice() : [settings.diff], jobs = [], sk = setupKey();
   for(let n = levStart; n < levStart + LEV_PAGE; n++) for(const d of diffs) if(!levCheck.has(n + '|' + d + '|' + sk)) jobs.push([n, d]);
   if(!jobs.length){ $('#levStatus').textContent = 'This page is already checked.'; return; }
-  levBusy = true; $('#levCheck').textContent = 'Stop'; let done = 0, bad = 0, plan = 0; const t0 = performance.now();
+  levBusy = true; $('#levCheck').textContent = 'Stop'; let done = 0, bad = 0, plan = 0, broke = 0; const t0 = performance.now();
   const step = () => {
     if(!levBusy || !jobs.length){ levBusy = false; $('#levCheck').textContent = 'Check this page';
-      $('#levStatus').textContent = 'Checked ' + done + ': ' + bad + ' impossible, ' + plan + ' need planning (' + ((performance.now() - t0) / 1000).toFixed(1) + ' s).'; renderLevels(); return; }
+      $('#levStatus').textContent = 'Checked ' + done + ': ' + bad + ' impossible, ' + broke + ' fall apart with the real ants, ' + plan + ' need planning (' + ((performance.now() - t0) / 1000).toFixed(1) + ' s).'; renderLevels(); return; }
     const [n, d] = jobs.shift(), keep = settings.diff; let res = 'u';
     try{ settings.diff = d; const L = buildLevel(n);
-      if(L){ const r = solveLevel(L, settings.slots, { nodes: 4000, ms: 2500 }); res = r.ok === true ? (greedyOK(L, settings.slots) ? 'g' : 'a') : r.ok === false ? 'x' : 'u'; }
+      if(L){ const S = settings.slots, gr = solveLevel(L, S, { greedy: true, nodes: 1e9, ms: 1e9 });
+        if(gr.ok === true && playtest(L, S, gr.plan).ok === true) res = 'g';
+        else { const r = solveLevel(L, S, { nodes: 4000, ms: 2500 });
+          // the solver's win is replayed with the real ants; if they can't win it either, the level is marked as failing
+          res = r.ok === true ? (realWin(L, S, r) ? 'a' : 'f') : r.ok === false ? 'x' : 'u'; } }
     } finally { settings.diff = keep; }
-    levCheck.set(n + '|' + d + '|' + sk, res); done++; if(res === 'x') bad++; if(res === 'a') plan++;
+    levCheck.set(n + '|' + d + '|' + sk, res); done++; if(res === 'x') bad++; if(res === 'a') plan++; if(res === 'f') broke++;
     $('#levStatus').textContent = 'Checking level ' + n + ' on ' + d + '… ' + done + ' / ' + (done + jobs.length);
     if(done % 3 === 0) renderLevels();
     setTimeout(step, 0);
@@ -2022,12 +2129,27 @@ $('#levCheck').onclick = () => {
 };
 
 /* ---------------- loop ---------------- */
-let last = performance.now();
+// The browser calls frame() once per screen refresh (60, 90, 120, 144 Hz...). A web page can't draw faster than the screen
+// refreshes, so "Max" means the screen's own rate; a lower cap skips refreshes to save battery.
+let last = performance.now(), lastDraw = 0;
+const fpsMeter = { raw: [], drawn: 0, t0: performance.now(), screen: 0, actual: 0 };
+function fpsNote(){ const el = $('#sFpsV'); if(!el) return; const sc = fpsMeter.screen, a = fpsMeter.actual;
+  el.textContent = (sc ? 'Your screen refreshes about ' + sc + ' times a second' : 'Measuring your screen') + (a ? ', drawing ' + a + ' fps now' : '')
+    + (settings.fps && sc && settings.fps > sc + 5 ? '. Capped by the screen at ' + sc : '') + '. Max follows your screen'; }
 function frame(now){
+  requestAnimationFrame(frame);
+  // measure the screen's refresh rate from the gaps between callbacks (median of the last 90)
+  const gap = now - (fpsMeter.prev || now); fpsMeter.prev = now;
+  if(gap > 2 && gap < 100){ fpsMeter.raw.push(gap); if(fpsMeter.raw.length > 90) fpsMeter.raw.shift(); }
+  const cap = settings.fps;
+  if(cap){ const iv = 1000 / cap; if(now - lastDraw < iv - 1) return; lastDraw = Math.max(lastDraw + iv, now - iv); } else lastDraw = now;
+  fpsMeter.drawn++;
+  if(now - fpsMeter.t0 >= 1000){ const r = fpsMeter.raw.slice().sort((a, b) => a - b), med = r[r.length >> 1] || 16.7;
+    fpsMeter.screen = Math.round(1000 / med); fpsMeter.actual = Math.round(fpsMeter.drawn * 1000 / (now - fpsMeter.t0)); fpsMeter.drawn = 0; fpsMeter.t0 = now;
+    if(!$('#mSet').hidden) fpsNote(); }
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   if(G && !paused && $('#mWin').hidden) update(dt);
   if(G){ if(trayDirty) renderTray(); if(uiDirty) renderSlots(); draw(); }
-  requestAnimationFrame(frame);
 }
 window.addEventListener('resize', layout);
 new ResizeObserver(() => layout()).observe(stage);
