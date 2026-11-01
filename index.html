@@ -43,6 +43,11 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
 
 #stage{ flex:1 1 auto; min-height:120px; max-height:calc(var(--aw, 400px) * 1.22); position:relative; }
 #cv{ position:absolute; inset:0; display:block; }
+#stage{ touch-action:none; -webkit-touch-callout:none; }
+#ff{ position:absolute; right:10px; top:10px; z-index:5; padding:5px 12px; border-radius:999px; background:rgba(28,20,14,.72); color:#fff8ea;
+  font-weight:700; font-size:1.05rem; pointer-events:none; opacity:0; transition:opacity .12s; }
+#ff.on{ opacity:1; }
+.ver{ font-size:.72rem; color:#8a7763; text-align:center; margin-top:10px; }
 
 #slots{ display:grid; gap:7px; padding:0 22px; height:calc(46px * var(--u, 1)); max-width:420px; width:100%; margin:0 auto; flex:none; position:relative; }
 .slot{ position:relative; border-radius:11px; background:#fbf8f1; font-size:calc(1.2rem * var(--u, 1)) !important; box-shadow:inset 0 -4px 0 #ddd5c6, 0 2px 0 rgba(0,0,0,.12);
@@ -181,7 +186,7 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
     <h1 id="title">Level 1</h1>
     <button class="speedbtn" id="btnSpeed">1×</button>
   </header>
-  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="stage"><canvas id="cv"></canvas><div id="ff" aria-hidden="true">2× ▸▸</div></div>
   <div id="slots"></div>
   <div id="tray"></div>
   <div id="boosters">
@@ -242,10 +247,12 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
   <h2>Settings</h2>
   <div class="row"><label for="sSpeed">Speed<small id="sSpeedV">1×</small></label><input type="range" id="sSpeed" min="0.25" max="10" step="0.25"></div>
   <div class="row"><label for="sVol">Sound<small id="sVolV">60%</small></label><input type="range" id="sVol" min="0" max="1" step="0.05"></div>
+  <div class="row" style="flex-wrap:wrap"><label>Sound style<small>Soft is quieter and rounder. Minimal also drops the per-cube clicks</small></label><div class="seg" id="sSound"></div></div>
   <div class="row"><label for="sHardL">Hard levels<small>Every 5th level is Hard and every 10th Super Hard: bigger boxes, no spare slot, more links and locks</small></label><input type="checkbox" id="sHardL"></div>
   <div class="row" style="flex-wrap:wrap"><label>Trickle speedup<small>Doubles the speed (up to 10x) while the ants dribble out. One ant: only one or two ants on the move. Slow flow: any one box with reachable cubes is sending about one ant a second or less</small></label><div class="seg" id="sTrickle"></div></div>
   <div class="row"><label for="sAuto">Auto-finish<small>When every box left fits in the free slots, place them and speed up to 4x</small></label><input type="checkbox" id="sAuto"></div>
   <div class="row" style="flex-wrap:wrap"><label>Frame rate<small id="sFpsV">Max follows your screen</small></label><div class="seg" id="sFps" style="flex-wrap:wrap"></div></div>
+  <div class="row"><label for="sFF">Hold for 2×<small>Press and hold the right half of the picture to double the speed while you hold</small></label><input type="checkbox" id="sFF"></div>
   <div class="row"><label for="sHold">Hold to highlight<small>Hold a box for half a second to light up its tiles</small></label><input type="checkbox" id="sHold"></div>
   <div class="row"><label>Ant size</label><div class="seg" id="sAnt"></div></div>
   <div class="row"><label for="sHap">Vibration<small>Tiny buzz when an ant grabs a cube. Android Chrome only, and only when the file is opened directly</small></label><input type="checkbox" id="sHap"></div>
@@ -275,6 +282,7 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
     <button class="btn" id="sRestart">Restart level</button>
     <button class="btn go" id="sClose">Done</button>
   </div>
+  <div class="ver">Build 6</div>
 </div></div>
 
 <script>
@@ -285,7 +293,7 @@ const stage = $('#stage'), slotsEl = $('#slots'), trayEl = $('#tray');
 
 /* ---------------- persistence ---------------- */
 const SKEY = 'antline.v1';
-const DEFAULTS = { speed:1, slots:5, cols:4, size:'L', hints:false, ramp:true, antSize:'L', haptics:true, vol:.6, holdSpot:true, pics:'all', shelf:'compact', autoFinish:true, hardLevels:true, tightBoost:true, K:7, diff:'normal', shade:'soft', wander:'little', contrast:'normal', symbols:false, shape:'fit', fps:0,
+const DEFAULTS = { speed:1, slots:5, cols:4, size:'L', hints:false, ramp:true, antSize:'L', haptics:true, vol:.6, holdSpot:true, pics:'all', shelf:'compact', autoFinish:true, hardLevels:true, tightBoost:true, K:7, diff:'normal', shade:'soft', wander:'little', contrast:'normal', symbols:false, shape:'fit', fps:0, sound:'classic', ff:true,
   mech:{ pairs:true, mystery:true, doors:true, stones:true, keys:true } };
 function loadSave(){ try{ const r = localStorage.getItem(SKEY); if(r) return JSON.parse(r); }catch(e){} return null; }
 const saved = loadSave();
@@ -1332,13 +1340,13 @@ function openDoor(d){ sfx('door'); for(let y = d.y; y < d.y + d.h; y++) for(let 
 function around(i){ const W = G.W, x = i % W, y = (i / W) | 0, out = []; for(let dy = -1; dy <= 1; dy++) for(let dx = -1; dx <= 1; dx++){ const nx = x + dx, ny = y + dy; if(nx >= 0 && ny >= 0 && nx < W && ny < G.H) out.push(ny * W + nx); } return out; }
 function doorCells(d){ const out = []; for(let y = d.y; y < d.y + d.h; y++) for(let x = d.x; x < d.x + d.w; x++) out.push(y * G.W + x); return out; }
 /* ---------------- sound (synthesized, no files) ---------------- */
-let AC = null, master = null; const sfxLast = {};
-function audio(){ if(!AC){ try{ AC = new (window.AudioContext || window.webkitAudioContext)(); master = AC.createGain(); master.connect(AC.destination); }catch(e){ return null; } }
-  if(AC.state === 'suspended') AC.resume(); master.gain.value = settings.vol; return AC; }
+let AC = null, master = null, lp = null, ATK = .006; const sfxLast = {};
+function audio(){ if(!AC){ try{ AC = new (window.AudioContext || window.webkitAudioContext)(); master = AC.createGain(); lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = .5; master.connect(lp); lp.connect(AC.destination); }catch(e){ return null; } }
+  if(AC.state === 'suspended') AC.resume(); master.gain.value = settings.vol; lp.frequency.value = settings.sound === 'classic' ? 20000 : 2600; return AC; }
 ['pointerdown', 'keydown'].forEach(t => document.addEventListener(t, () => { if(settings.vol > 0) audio(); }, { passive: true }));
 function tone(f0, f1, dur, type, gain, delay){ const a = AC, t = a.currentTime + (delay || 0), o = a.createOscillator(), g = a.createGain();
   o.type = type || 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t + dur);
-  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + .006); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + ATK); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
   o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + .02); }
 function noise(dur, freq, q, gain, delay){ const a = AC, t = a.currentTime + (delay || 0), n = Math.ceil(a.sampleRate * dur), buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
   for(let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
@@ -1356,8 +1364,24 @@ const SFX = {
   whoosh(){ noise(.35, 900, .7, .35); tone(300, 900, .3, 'sine', .04); },
   win(){ [523, 659, 784, 1046, 1318].forEach((f, k) => tone(f, f, .35, 'triangle', .09, k * .1)); },
 };
+// Soft: quieter sine blips with gentler attacks, run through a lowpass. Minimal: the same, minus the per-cube pick and drop.
+const SFX_SOFT = {
+  pick(){ const p = 1 + (Math.random() - .5) * .08; tone(600 * p, 720 * p, .06, 'sine', .04); },
+  drop(){ tone(330, 260, .1, 'sine', .025); },
+  tap(){ tone(440, 370, .08, 'sine', .045); },
+  place(){ tone(523, 587, .1, 'sine', .055); tone(659, 698, .12, 'sine', .035, .06); },
+  done(){ tone(784, 784, .3, 'sine', .045); tone(1046, 1046, .35, 'sine', .03, .08); },
+  key(){ [784, 988, 1175].forEach((f, k) => tone(f, f, .18, 'sine', .035, k * .08)); },
+  door(){ tone(150, 95, .3, 'sine', .08); },
+  error(){ tone(220, 196, .12, 'sine', .045); },
+  whoosh(){ noise(.3, 600, .6, .1); },
+  win(){ [523, 659, 784, 1046].forEach((f, k) => tone(f, f, .5, 'sine', .045, k * .12)); },
+};
+const SFX_MIN = Object.assign({}, SFX_SOFT, { pick(){}, drop(){} });
 const SFX_GAP = { place: .04, pick: .045, drop: .06, done: .12 };
-function sfx(name){ if(HEADLESS || !(settings.vol > 0) || !audio()) return; const now = AC.currentTime; if(sfxLast[name] && now - sfxLast[name] < (SFX_GAP[name] || 0)) return; sfxLast[name] = now; try{ SFX[name](); }catch(e){} }
+const SFX_GAP_SOFT = { place: .06, pick: .09, drop: .1, done: .15 };
+function sfx(name){ if(HEADLESS || !(settings.vol > 0) || !audio()) return; const now = AC.currentTime; const st = settings.sound, set = st === 'soft' ? SFX_SOFT : st === 'minimal' ? SFX_MIN : SFX, gap = st === 'classic' ? SFX_GAP : SFX_GAP_SOFT;
+  if(sfxLast[name] && now - sfxLast[name] < (gap[name] || 0)) return; sfxLast[name] = now; ATK = st === 'classic' ? .006 : .014; try{ set[name](); }catch(e){} }
 
 let lastBuzz = 0;
 function buzz(force){ if(HEADLESS || !settings.haptics || !navigator.vibrate) return; const now = performance.now(); if(!force && now - lastBuzz < 70) return; lastBuzz = now; try{ navigator.vibrate(force ? 30 : 12); }catch(e){} }
@@ -1425,9 +1449,8 @@ const BOOST_MAX = 10;   // the trickle boost doubles the speed up to this; at 8x
 function update(dt){
   tightCheck(dt);
   SPD = G.boost > 1 ? Math.max(settings.speed, Math.min(BOOST_MAX, settings.speed * G.boost)) : settings.speed;
-  updateInner(dt);
-  autoFinish(dt);
-  autoPlay(dt);
+  const reps = ffOn() ? 2 : 1;
+  for(let k = 0; k < reps && G; k++){ updateInner(dt); autoFinish(dt); autoPlay(dt); }
 }
 function updateInner(dt){
   const sdt = dt * SPD; G.clock = (G.clock || 0) + sdt;
@@ -1663,7 +1686,19 @@ function draw(){
   const M = boardPad(); ctx.drawImage(G.bcv, bx - M, by - M, W * s + 2 * M, H * s + 2 * M);
   if(G.spot >= 0){ ctx.fillStyle = 'rgba(18,12,22,.66)'; const L = lift();
     for(let i = 0; i < G.tile.length; i++){ if(!solidAt(i)) continue; if(G.tile[i] === G.spot && G.kind[i] !== 1) continue; const di = G.doorAt[i]; if(di >= 0 && G.doors[di].color === G.spot && G.doors[di].hp > 0) continue;
-      ctx.fillRect(bx + (i % W) * s, by + ((i / W) | 0) * s - L, s, s + (i + W < G.tile.length && solidAt(i + W) ? 0 : L)); } }
+      ctx.fillRect(bx + (i % W) * s, by + ((i / W) | 0) * s - L, s, s + (i + W < G.tile.length && solidAt(i + W) ? 0 : L)); }
+    // outline the lit color's tiles so dark colors still stand out against the dimmed rest: dark halo, then a pulsing light line
+    const lit = i => i >= 0 && i < G.tile.length && G.tile[i] === G.spot && G.kind[i] !== 1;
+    ctx.beginPath();
+    for(let i = 0; i < G.tile.length; i++){ if(!lit(i)) continue; const x = i % W, y = (i / W) | 0, px = bx + x * s, py = by + y * s - L;
+      if(y === 0 || !lit(i - W)){ ctx.moveTo(px, py); ctx.lineTo(px + s, py); }
+      if(y === G.H - 1 || !lit(i + W)){ ctx.moveTo(px, py + s); ctx.lineTo(px + s, py + s); }
+      if(x === 0 || !lit(i - 1)){ ctx.moveTo(px, py); ctx.lineTo(px, py + s); }
+      if(x === W - 1 || !lit(i + 1)){ ctx.moveTo(px + s, py); ctx.lineTo(px + s, py + s); } }
+    const lw = Math.max(1.5, s * .22), pulse = .75 + .25 * Math.sin(performance.now() / 160);
+    ctx.save(); ctx.lineCap = 'square'; ctx.lineJoin = 'miter';
+    ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.lineWidth = lw * 2.2; ctx.stroke();
+    ctx.strokeStyle = `rgba(255,248,214,${pulse})`; ctx.lineWidth = lw; ctx.stroke(); ctx.restore(); }
   // keys float above their pit, bobbing and glowing so they are easy to spot
   const now = performance.now() / 1000;
   for(const k of G.keys){ if(k.got) continue; const cx = bx + (k.x + 1) * s, cy = by + (k.y + 1) * s - lift() - Math.sin(now * 3 + k.id) * s * .25, R = Math.max(s * 2.2, 14);
@@ -1924,6 +1959,8 @@ function openSettings(){
   seg('#sPics', [['all', 'All sets'], ['noto', 'Noto 3D'], ['fluent', 'Fluent 3D'], ['retro', 'Retro'], ['classic', 'Classic']], 'pics');
   $('#sSym').checked = settings.symbols;
   seg('#sShade', [['off', 'Flat'], ['soft', 'Soft'], ['rich', 'Rich']], 'shade');
+  seg('#sSound', [['classic', 'Classic'], ['soft', 'Soft'], ['minimal', 'Minimal']], 'sound', () => { if(audio()) sfx('place'); });
+  $('#sFF').checked = settings.ff;
   seg('#sTrickle', [['off', 'Off'], ['one', 'One ant'], ['slow', 'Slow flow']], 'trickle');
   seg('#sFps', [[0, 'Max'], [30, '30'], [60, '60'], [90, '90'], [120, '120'], [144, '144'], [240, '240']], 'fps', fpsNote); fpsNote();
   seg('#sWander', [['off', 'Off'], ['little', 'A little'], ['more', 'More']], 'wander');
@@ -1940,6 +1977,19 @@ $('#sVol').oninput = e => { settings.vol = +e.target.value; $('#sVolV').textCont
 $('#sHardL').onchange = e => { settings.hardLevels = e.target.checked; store(); };
 $('#sAuto').onchange = e => { settings.autoFinish = e.target.checked; store(); };
 $('#sHold').onchange = e => { settings.holdSpot = e.target.checked; store(); };
+$('#sFF').onchange = e => { settings.ff = e.target.checked; store(); if(!settings.ff) ffStop(); };
+/* hold the right half of the picture for 2x, like video apps */
+let ffPress = null, ffTimer = 0, ffHeld = false;
+const FF_MS = 220;
+function ffOn(){ return ffHeld && settings.ff && !paused; }
+function ffStop(){ clearTimeout(ffTimer); ffPress = null; if(ffHeld){ ffHeld = false; $('#ff').classList.remove('on'); } }
+stage.addEventListener('pointerdown', e => { if(!settings.ff || !G || (e.button && e.button !== 0) || ffPress) return;
+  const r = stage.getBoundingClientRect(); if(e.clientX < r.left + r.width / 2) return;
+  ffPress = e.pointerId; try{ stage.setPointerCapture(e.pointerId); }catch(_){}
+  clearTimeout(ffTimer); ffTimer = setTimeout(() => { if(ffPress != null){ ffHeld = true; $('#ff').classList.add('on'); buzz(); } }, FF_MS); });
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => stage.addEventListener(t, e => { if(e.pointerId === ffPress) ffStop(); }));
+stage.addEventListener('contextmenu', e => e.preventDefault());
+window.addEventListener('blur', ffStop);
 $('#sHap').onchange = e => { settings.haptics = e.target.checked; store(); if(settings.haptics) buzz(true); };
 $('#sSym').onchange = e => { settings.symbols = e.target.checked; store(); applyPalette(); };
 $('#sRamp').onchange = e => { settings.ramp = e.target.checked; store(); };
@@ -2158,6 +2208,13 @@ syncSpeed();
 startLevel(level);
 requestAnimationFrame(frame);
 </script>
-<script>if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});</script>
+<script>
+if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')){
+  const hadSW = !!navigator.serviceWorker.controller; let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if(hadSW && !reloaded){ reloaded = true; location.reload(); } });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => { r.update().catch(() => {});
+    document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') r.update().catch(() => {}); }); }).catch(() => {});
+}
+</script>
 </body>
 </html>
