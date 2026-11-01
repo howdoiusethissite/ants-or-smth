@@ -47,6 +47,10 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
 #ff{ position:absolute; right:10px; top:10px; z-index:5; padding:5px 12px; border-radius:999px; background:rgba(28,20,14,.72); color:#fff8ea;
   font-weight:700; font-size:1.05rem; pointer-events:none; opacity:0; transition:opacity .12s; }
 #ff.on{ opacity:1; }
+#remain{ position:absolute; left:50%; top:10px; transform:translateX(-50%); z-index:5; padding:5px 14px; border-radius:999px; background:rgba(28,20,14,.8); color:#fff8ea;
+  font-weight:700; font-size:1.05rem; pointer-events:none; white-space:nowrap; display:flex; align-items:center; gap:8px; }
+#remain:empty{ display:none; }
+#remain i{ width:16px; height:16px; border-radius:5px; border:2px solid #fff8ea; }
 .ver{ font-size:.72rem; color:#8a7763; text-align:center; margin-top:10px; }
 
 #slots{ display:grid; gap:7px; padding:0 22px; height:calc(46px * var(--u, 1)); max-width:420px; width:100%; margin:0 auto; flex:none; position:relative; }
@@ -167,6 +171,14 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
 .lv .dots i.g{ border-color:#3f9a3a; } .lv .dots i.a{ border-color:#d98a12; } .lv .dots i.x{ border-color:#c62f3a; background:#c62f3a; } .lv .dots i.u{ border-color:#8a7763; }
 .lv .dots i.f{ border-color:#c62f3a; border-style:dashed; }
 .lv .dots i.run{ border-color:var(--ink); border-style:dotted; }
+#mLoad{ z-index:60; background:rgba(28,20,14,.45); }
+.loadsheet{ text-align:center; max-width:300px; }
+.loadsheet p{ margin:2px 0 0; }
+.loadants{ display:flex; justify-content:center; gap:10px; margin:6px 0 10px; }
+.loadants i{ width:14px; height:14px; border-radius:50%; background:var(--honey); animation:loadHop 1s ease-in-out infinite; }
+.loadants i:nth-child(2){ animation-delay:.15s; } .loadants i:nth-child(3){ animation-delay:.3s; }
+@keyframes loadHop{ 0%,100%{ transform:translateY(0); opacity:.5 } 40%{ transform:translateY(-10px); opacity:1 } }
+@media (prefers-reduced-motion: reduce){ .loadants i{ animation:none; opacity:.8; } }
 .levkey{ font-size:.75rem; color:#8a7763; margin:8px 0 2px; line-height:1.35; }
 @media (prefers-reduced-motion: reduce){ .shake,.pop{ animation:none; } }
 </style>
@@ -186,7 +198,7 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
     <h1 id="title">Level 1</h1>
     <button class="speedbtn" id="btnSpeed">1×</button>
   </header>
-  <div id="stage"><canvas id="cv"></canvas><div id="ff" aria-hidden="true">2× ▸▸</div></div>
+  <div id="stage"><canvas id="cv"></canvas><div id="ff" aria-hidden="true">2× ▸▸</div><div id="remain" aria-live="polite"></div></div>
   <div id="slots"></div>
   <div id="tray"></div>
   <div id="boosters">
@@ -200,6 +212,11 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
 <div id="banner" class="hide"></div>
 
 <div id="hardSplash" hidden></div>
+<div class="modal" id="mLoad" hidden><div class="sheet loadsheet" role="status" aria-live="polite">
+  <div class="loadants" aria-hidden="true"><i></i><i></i><i></i></div>
+  <h2 id="loadTitle">Building level</h2>
+  <p id="loadText">Checking that it can be won</p>
+</div></div>
 <div class="modal" id="mWin" hidden><div class="sheet" style="text-align:center">
   <h2 id="winTitle">Picture cleared</h2>
   <canvas id="winPic" width="176" height="176"></canvas>
@@ -253,11 +270,13 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
   <div class="row"><label for="sAuto">Auto-finish<small>When every box left fits in the free slots, place them and speed up to 4x</small></label><input type="checkbox" id="sAuto"></div>
   <div class="row" style="flex-wrap:wrap"><label>Frame rate<small id="sFpsV">Max follows your screen</small></label><div class="seg" id="sFps" style="flex-wrap:wrap"></div></div>
   <div class="row"><label for="sFF">Hold for 2×<small>Press and hold the right half of the picture to double the speed while you hold</small></label><input type="checkbox" id="sFF"></div>
+  <div class="row"><label for="sRemain">Remaining count<small>While a color is lit, show how many cubes of it are left in the picture</small></label><input type="checkbox" id="sRemain"></div>
   <div class="row"><label for="sHold">Hold to highlight<small>Hold a box for half a second to light up its tiles</small></label><input type="checkbox" id="sHold"></div>
   <div class="row"><label>Ant size</label><div class="seg" id="sAnt"></div></div>
   <div class="row"><label for="sHap">Vibration<small>Tiny buzz when an ant grabs a cube. Android Chrome only, and only when the file is opened directly</small></label><input type="checkbox" id="sHap"></div>
   <div class="row"><label for="sHints">Hint rings<small>Outline tray boxes that have reachable tiles</small></label><input type="checkbox" id="sHints"></div>
-  <div class="row" style="flex-wrap:wrap"><label>Contrast<small>Boosted pushes look-alike shades apart</small></label><div class="seg" id="sContrast"></div></div>
+  <div class="row" style="flex-wrap:wrap"><label>Contrast<small>Boosted pushes look-alike shades apart. Strong pushes much harder, so the picture drifts further from the original colors</small></label><div class="seg" id="sContrast"></div></div>
+  <div class="row"><label for="sSeams">Color borders<small>A dark line wherever two different colors meet in the picture</small></label><input type="checkbox" id="sSeams"></div>
   <div class="row"><label for="sSym">Color symbols<small>A shape on every tile and box, unique per color</small></label><input type="checkbox" id="sSym"></div>
   <div class="row"><label>Ant wandering<small>How often an ant picks a cube other than the closest. Off makes the ants fully predictable (what the level checker assumes); with it on, wins earn shadow stars</small></label><div class="seg" id="sWander"></div></div>
   <div class="group">Next restart or level</div>
@@ -282,18 +301,48 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
     <button class="btn" id="sRestart">Restart level</button>
     <button class="btn go" id="sClose">Done</button>
   </div>
-  <div class="ver">Build 6</div>
+  <div class="ver">Build 9</div>
 </div></div>
 
 <script>
+// Stand-ins for the page so the game script can run inside the level-building worker. Anything it touches that isn't
+// listed here is a harmless dummy. The stage reports the real stage size sent with each job.
+const WORKER_PRELUDE = `'use strict';
+let __dims = { w: 400, h: 440, cw: 400, ch: 440, dpr: 1 };
+const __D = (() => { let D; const f = function(){}; D = new Proxy(f, {
+  get(t, k){ if(k === Symbol.iterator) return function*(){}; if(k === Symbol.toPrimitive) return () => 0; if(k === 'length') return 0; if(k === 'then') return undefined; return D; },
+  set(){ return true; }, apply(){ return D; }, construct(){ return D; } }); return D; })();
+const __stage = new Proxy({ getBoundingClientRect: () => ({ left: 0, top: 0, width: __dims.w, height: __dims.h, right: __dims.w, bottom: __dims.h }) }, {
+  get(t, k){ if(k === 'clientWidth') return __dims.cw; if(k === 'clientHeight') return __dims.ch; return k in t ? t[k] : __D; }, set(){ return true; } });
+self.document = new Proxy({}, { get(t, k){ if(k === 'querySelector') return s => s === '#stage' ? __stage : __D; return __D; } });
+self.window = new Proxy({}, { get(t, k){ if(k === 'devicePixelRatio') return __dims.dpr; if(k === 'AudioContext' || k === 'webkitAudioContext') return undefined; return __D; } });
+self.localStorage = { getItem: () => null, setItem(){}, removeItem(){} };
+self.ResizeObserver = class { observe(){} };
+self.requestAnimationFrame = () => 0;
+`;
+const WORKER_TAIL = `
+self.onmessage = e => { const m = e.data;
+  try{
+    for(const k of Object.keys(settings)) if(!(k in m.settings)) delete settings[k];
+    Object.assign(settings, m.settings); __dims = m.dims; slotX = m.slotX || []; cw = m.dims.w; ch = m.dims.h;   // the page sets these in layout(); ants start at the stage bottom
+    if(m.job === 'build'){ const key = recipeKey(m.n, m.pic || undefined); buildLevel(m.n, m.pic || undefined);
+      postMessage({ id: m.id, rec: recipes.get(key) || { fb: true } }); }
+    else if(m.job === 'check'){ const res = checkLevelHere(m.n, m.d);
+      postMessage({ id: m.id, res, recipes: [...recipes].filter(([k]) => !k.startsWith('pic')) }); }
+  }catch(err){ postMessage({ id: m.id, error: String(err && err.message || err) }); }
+};
+`;
+</script>
+<script id="game">
 'use strict';
+const IN_WORKER = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
 const $ = s => document.querySelector(s);
 const cv = $('#cv'), ctx = cv.getContext('2d');
 const stage = $('#stage'), slotsEl = $('#slots'), trayEl = $('#tray');
 
 /* ---------------- persistence ---------------- */
 const SKEY = 'antline.v1';
-const DEFAULTS = { speed:1, slots:5, cols:4, size:'L', hints:false, ramp:true, antSize:'L', haptics:true, vol:.6, holdSpot:true, pics:'all', shelf:'compact', autoFinish:true, hardLevels:true, tightBoost:true, K:7, diff:'normal', shade:'soft', wander:'little', contrast:'normal', symbols:false, shape:'fit', fps:0, sound:'classic', ff:true,
+const DEFAULTS = { speed:1, slots:5, cols:4, size:'L', hints:false, ramp:true, antSize:'L', haptics:true, vol:.6, holdSpot:true, pics:'all', shelf:'compact', autoFinish:true, hardLevels:true, tightBoost:true, K:7, diff:'normal', shade:'soft', wander:'little', contrast:'normal', symbols:false, shape:'fit', fps:0, sound:'classic', ff:true, seams:false, remain:true,
   mech:{ pairs:true, mystery:true, doors:true, stones:true, keys:true } };
 function loadSave(){ try{ const r = localStorage.getItem(SKEY); if(r) return JSON.parse(r); }catch(e){} return null; }
 const saved = loadSave();
@@ -928,32 +977,46 @@ function levelPasses(L, tier, S){
   if(!robust(L, S, { nodes: 600, ms: 700 })) return false;
   return realWin(L, S, solveLevel(L, S, { nodes: 600, ms: 700 }));
 }
+// Which build attempt passed for a level and setup. Kept in memory for restarts and in storage for later visits.
+const RKEY = 'antline.recipes.v1', recipes = new Map();
+try{ const r = JSON.parse(localStorage.getItem(RKEY) || '[]'); r.forEach(([k, v]) => recipes.set(k, v)); }catch(_){}
+let picSerial = 0; const picIds = new WeakMap();
+function recipeKey(n, pic){ if(HEADLESS) return null;
+  if(pic){ if(!picIds.has(pic)) picIds.set(pic, ++picSerial); return 'pic' + picIds.get(pic) + '|' + setupKey() + '|' + settings.diff + '|' + settings.K; }
+  return n + '|' + setupKey() + '|' + settings.diff; }
+function rememberRecipe(k, v){ recipes.delete(k); recipes.set(k, v);
+  while(recipes.size > 400) recipes.delete(recipes.keys().next().value);
+  try{ localStorage.setItem(RKEY, JSON.stringify([...recipes].filter(([k]) => !k.startsWith('pic')))); }catch(_){} }
 function buildLevel(n, pic){
   const sz = boardSize();
   const base = frameAspect(pic || (settings.pics !== 'classic' ? picFor(n, sz)
     : shadePic(SCENES[(n - 1) % SCENES.length](sz, sz, rngOf(n * 7919 + 13)), settings.shade)));
   const tier = pic ? 0 : levelTier(n), S = settings.slots;
-  let okFull = null;
+  // Building is deterministic, so once an attempt passes the checks, remember which one it was. Restarts (and later
+  // visits with the same setup) rebuild just that attempt and skip the slow solver checks.
+  const key = recipeKey(n, pic), known = key && recipes.get(key);
+  const main = (tt, at) => { BUILD_TIER = tt; const L = tryBuild(n, base, rngOf(n * 104729 + at * 31 + 1 + tt * 7777), tt > 0 || at < 30, tt > 0 || at < 40, tt ? Math.min(.5, at / 50) : Math.min(1, at / 24)); if(L) L.tier = tt; return L; };
+  const last = at => { BUILD_TIER = 0; const L = tryBuild(n, base, rngOf(n * 7 + at), false, false, 1); if(L) L.tier = 0; return L; };
+  const keep = (L, rec) => { if(key) rememberRecipe(key, rec); return L; };
+  let okFull = null, okRec = null;
   try {
-    for(let tt = tier; tt >= 0; tt--){
-      BUILD_TIER = tt;
+    if(known && !known.fb){ const L = known.last ? last(known.at) : main(known.tt, known.at); if(L) return L; recipes.delete(key); }
+    if(!(known && known.fb)) for(let tt = tier; tt >= 0; tt--){
       const tries = tt ? 30 : 50;
       for(let at = 0; at < tries; at++){
-        const r = rngOf(n * 104729 + at * 31 + 1 + tt * 7777), ease = tt ? Math.min(.5, at / 50) : Math.min(1, at / 24);
-        const L = tryBuild(n, base, r, tt > 0 || at < 30, tt > 0 || at < 40, ease);
+        const L = main(tt, at);
         if(!L || !levelPasses(L, tt, S)) continue;
-        L.tier = tt;
-        if(tt < 2) return L;
+        if(tt < 2) return keep(L, { tt, at });
         // Super Hard: prefer a board where one fewer slot provably loses
-        if(S <= 2 || solveLevel(L, S - 1, { nodes: 600, ms: 600 }).ok === false) return L;
-        if(!okFull) okFull = L;
+        if(S <= 2 || solveLevel(L, S - 1, { nodes: 600, ms: 600 }).ok === false) return keep(L, { tt, at });
+        if(!okFull){ okFull = L; okRec = { tt, at }; }
       }
-      if(okFull) return okFull;
+      if(okFull) return keep(okFull, okRec);
     }
     // last resort: no keys, doors or stones, gentlest boxes, still checked
-    BUILD_TIER = 0;
-    for(let at = 0; at < 30; at++){ const L = tryBuild(n, base, rngOf(n * 7 + at), false, false, 1); if(L && realWin(L, S, solveLevel(L, S, { nodes: 400, ms: 500 }))){ L.tier = 0; return L; } }
+    if(!(known && known.fb)) for(let at = 0; at < 30; at++){ const L = last(at); if(L && realWin(L, S, solveLevel(L, S, { nodes: 400, ms: 500 }))) return keep(L, { last: true, at }); }
   } finally { BUILD_TIER = 0; }
+  if(key && !known) rememberRecipe(key, { fb: true });
   const L = tryBuild(n, base, rngOf(n), false, false, 1); if(L){ L.tier = 0; L.unverified = true; } return L;
 }
 // Plays the level greedily with the real slot count; a level is only kept if this succeeds.
@@ -1052,9 +1115,18 @@ function solveLevel(src, S, opt){
   let nodes = 0, out = null;
   const memo = new Set();
   const pass = (st, x, y) => { if(x < 0 || y < 0 || x >= W || y >= H) return true; const i = y * W + x; return (st.kind[i] === 0 || st.kind[i] === 3) && st.tile[i] < 0; };
-  function bfs(st, src){ const d = new Int32Array(EN).fill(-1), q = [src]; d[src] = 0;
-    for(let h = 0; h < q.length; h++){ const e = q[h], x = e % EW - 1, y = ((e / EW) | 0) - 1;
-      for(let k = 0; k < 4; k++){ const nx = x + N4[k][0], ny = y + N4[k][1]; if(nx < -1 || ny < -1 || nx > W || ny > H) continue; const f = (ny + 1) * EW + nx + 1; if(d[f] < 0 && pass(st, nx, ny)){ d[f] = d[e] + 1; q.push(f); } } }
+  // Distances from src over the padded grid (ring around the board always open). Same result as a plain BFS with pass(),
+  // but walkability is laid out once per call in a flat array and the queue is reused, which makes it several times faster.
+  const walkable = new Uint8Array(EN).fill(1), bq = new Int32Array(EN), exOf = new Int16Array(EN);
+  for(let e = 0; e < EN; e++) exOf[e] = e % EW;
+  function bfs(st, src){
+    for(let y = 0; y < H; y++){ const r = y * W, re = (y + 1) * EW + 1; for(let x = 0; x < W; x++){ const i = r + x, k = st.kind[i]; walkable[re + x] = (k === 0 || k === 3) && st.tile[i] < 0 ? 1 : 0; } }
+    const d = new Int32Array(EN).fill(-1); let qh = 0, qt = 0; bq[qt++] = src; d[src] = 0;
+    while(qh < qt){ const e = bq[qh++], de = d[e] + 1, x = exOf[e];
+      if(x > 0){ const f = e - 1; if(d[f] < 0 && walkable[f]){ d[f] = de; bq[qt++] = f; } }
+      if(x < EW - 1){ const f = e + 1; if(d[f] < 0 && walkable[f]){ d[f] = de; bq[qt++] = f; } }
+      if(e >= EW){ const f = e - EW; if(d[f] < 0 && walkable[f]){ d[f] = de; bq[qt++] = f; } }
+      if(e < EN - EW){ const f = e + EW; if(d[f] < 0 && walkable[f]){ d[f] = de; bq[qt++] = f; } } }
     return d; }
   const cellD = (d, x, y) => { let b = 1e9; for(let k = 0; k < 4; k++){ const nx = x + N4[k][0], ny = y + N4[k][1]; if(nx < -1 || nx > W) continue; const v = d[(ny + 1) * EW + nx + 1]; if(v >= 0 && v < b) b = v; } return b; };
   function crack(st, i){ const x = i % W, y = (i / W) | 0; for(let k = 0; k < 4; k++){ const nx = x + N4[k][0], ny = y + N4[k][1]; if(nx < 0 || ny < 0 || nx >= W || ny >= H) continue; const j = ny * W + nx; if(st.kind[j] === 1 && --st.rock[j] <= 0) st.kind[j] = 0; } }
@@ -1076,8 +1148,8 @@ function solveLevel(src, S, opt){
   function settle(st){
     let t = 0, ver = 0; const fl = [], spawnT = new Array(S).fill(0), pend = new Array(S).fill(0), stamp = new Array(S).fill(-1), lists = new Array(S);
     const claimed = new Uint8Array(N), dClaim = new Int16Array(doors.length);
-    let d0 = bfs(st, entryE[entries.length >> 1]);
-    const keyCheck = () => keys.forEach((k, j) => { if(!st.key[j] && d0[(k.y + 1) * EW + k.x + 1] >= 0){ st.key[j] = 1; for(let q = 0; q < 4; q++) st.kind[(k.y + (q >> 1)) * W + k.x + (q & 1)] = 0; ver++; } });
+    let d0 = bfs(st, entryE[entries.length >> 1]), d0v = -1;
+    const keyCheck = () => { d0v = ver; keys.forEach((k, j) => { if(!st.key[j] && d0[(k.y + 1) * EW + k.x + 1] >= 0){ st.key[j] = 1; for(let q = 0; q < 4; q++) st.kind[(k.y + (q >> 1)) * W + k.x + (q & 1)] = 0; ver++; } }); };
     keyCheck();
     for(let guard = 0; guard < 20000; guard++){
       // ants arriving this bucket take their cube
@@ -1091,7 +1163,7 @@ function solveLevel(src, S, opt){
       for(let k = 0; k < S; k++){ const q = st.slots[k]; if(!q || q.rem <= 0) continue;
         while(q.rem > 0 && spawnT[k] <= t){
           if(pend[k] >= cap){ spawnT[k] = t + .05; break; }
-          if(stamp[k] !== ver){ const c = boxes[q.i].color, d = bfs(st, entryE[Math.min(k, entryE.length - 1)]), L = [];
+          if(stamp[k] !== ver){ const c = boxes[q.i].color, ek = Math.min(k, entryE.length - 1), d = ek === entries.length >> 1 && d0v === ver ? d0 : bfs(st, entryE[ek]), L = [];
             for(let i = 0; i < N; i++){ if(st.tile[i] !== c || st.kind[i] !== 0) continue; const v = cellD(d, i % W, (i / W) | 0); if(v < 1e9) L.push([jit ? v + jit() * 1.5 : v, i]); }
             doors.forEach((dr, j) => { if(st.dhp[j] > 0 && dr.color === c){ const v = doorD(d, dr); if(v < 1e9) L.push([jit ? v + jit() * 1.5 : v, N + j]); } });
             L.sort((a, b) => a[0] - b[0] || a[1] - b[1]); lists[k] = { L, p: 0 }; stamp[k] = ver; }
@@ -1192,9 +1264,9 @@ function fromLab([L, a, b]){ const fy = (L + 16) / 116, fx = fy + a / 500, fz = 
   const c = v => 255 * (v > .0031308 ? 1.055 * v ** (1 / 2.4) - .055 : 12.92 * v);
   return rgbToHex(c(x * 3.2406 - y * 1.5372 - z * .4986), c(-x * .9689 + y * 1.8758 + z * .0415), c(x * .0557 - y * .204 + z * 1.057)); }
 // Pushes colors that sit close together in Lab space apart, mostly along the direction they already differ.
-function spreadPal(pal){
-  const lab = pal.map(toLab), MIN = 26;
-  for(let it = 0; it < 60; it++){ let moved = false;
+function spreadPal(pal, MIN){
+  const lab = pal.map(toLab); MIN = MIN || 26;
+  for(let it = 0; it < 150; it++){ let moved = false;
     for(let i = 0; i < lab.length; i++) for(let j = i + 1; j < lab.length; j++){
       const A = lab[i], B = lab[j]; let d = [A[0] - B[0], A[1] - B[1], A[2] - B[2]], n = Math.hypot(...d);
       if(n >= MIN) continue; moved = true;
@@ -1218,7 +1290,7 @@ function drawGlyph(c, color, cx, cy, size){ const g = glyphOf(color); c.save(); 
   const ink = inkOn(G.pal[color]); if(g.hollow){ c.strokeStyle = ink; c.lineWidth = 1.5; c.stroke(glyphPaths[color % GLYPHS.length]); } else { c.fillStyle = ink; c.fill(glyphPaths[color % GLYPHS.length]); } c.restore(); }
 function applyPalette(){
   if(!G) return;
-  G.pal = settings.contrast === 'boost' ? spreadPal(G.basePal) : G.basePal.slice();
+  G.pal = settings.contrast === 'boost' ? spreadPal(G.basePal, 26) : settings.contrast === 'strong' ? spreadPal(G.basePal, 42) : G.basePal.slice();
   G.outline = G.pal.map(c => lum(c) > .78 ? '#7a6f66' : mix(c, '#1d140e', .5));
   G.light = G.pal.map(c => mix(c, '#ffffff', .35)); G.dark = G.pal.map(c => mix(c, '#000000', .2)); G.edge = G.pal.map(c => mix(c, '#000000', .3)); G.shine = G.pal.map(c => mix(c, '#ffffff', .28)); G.dark2 = G.pal.map(c => mix(c, '#000000', .34));
   G.boardDirty = true; trayDirty = true; uiDirty = true;
@@ -1232,7 +1304,50 @@ const LANE = 3, SPAWN = .16, MAXP = 14;
 let bfsCache = new Map(), uiDirty = true, trayDirty = true, mode = null, jamTimer = 0;
 
 function tileCount(L){ let k = 0; for(let i = 0; i < L.tile.length; i++) if(L.tile[i] >= 0) k++; return Math.max(60, k); }
-function startLevel(n, pic){
+/* ---------------- background builds ----------------
+   Building a level the first time runs the solver checks, which can take seconds. That work runs in a Web Worker made from
+   this same script (with stand-ins for the page), so the screen never freezes. The worker sends back the build recipe and
+   the page then rebuilds just that attempt, which is instant. If workers are unavailable, it builds here behind the
+   loading screen instead. */
+let worker = null, workerOk = !IN_WORKER, jobSeq = 0;
+const jobs = new Map(), pendingBuild = new Map();
+function getWorker(){
+  if(!workerOk) return null; if(worker) return worker;
+  try{
+    const src = document.getElementById('game').textContent;
+    worker = new Worker(URL.createObjectURL(new Blob([WORKER_PRELUDE, src, WORKER_TAIL], { type: 'text/javascript' })));
+    worker.onmessage = e => { const m = e.data, j = jobs.get(m.id); if(!j) return; jobs.delete(m.id); if(m.error) j.no(new Error(m.error)); else j.ok(m); };
+    worker.onerror = e => { e.preventDefault && e.preventDefault(); workerDead(); };
+  }catch(_){ workerDead(); }
+  return worker;
+}
+function workerDead(){ workerOk = false; try{ worker && worker.terminate(); }catch(_){} worker = null; for(const j of jobs.values()) j.no(new Error('worker')); jobs.clear(); }
+function workerJob(msg){ const w = getWorker(); if(!w) return Promise.reject(new Error('no worker'));
+  const r = stage.getBoundingClientRect();
+  msg.id = ++jobSeq; msg.settings = JSON.parse(JSON.stringify(settings)); msg.dims = { w: r.width, h: r.height, cw: stage.clientWidth, ch: stage.clientHeight, dpr: window.devicePixelRatio || 1 }; msg.slotX = slotX.slice();
+  return new Promise((ok, no) => { jobs.set(msg.id, { ok, no }); w.postMessage(msg); }); }
+// Makes sure the recipe for level n (or an imported picture) is known. Resolves once it is.
+function ensureRecipe(n, pic, key){
+  if(!key || recipes.has(key)) return Promise.resolve();
+  if(pendingBuild.has(key)) return pendingBuild.get(key);
+  const viaWorker = () => workerJob({ job: 'build', n, pic: pic || null }).then(m => { rememberRecipe(key, m.rec); });
+  const here = () => new Promise(res => { if(loading){ clearTimeout(loadShowT); $('#mLoad').hidden = false; } res(); }).then(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(() => { try{ buildLevel(n, pic); }catch(_){} res(); }))));
+  const p = (workerOk ? viaWorker().catch(here) : here()).finally(() => pendingBuild.delete(key));
+  pendingBuild.set(key, p); return p;
+}
+let loadTok = 0, loadShowT = 0, loading = false;
+function showLoading(n, pic){ loading = true; clearTimeout(loadShowT);
+  $('#loadTitle').textContent = pic ? 'Building your picture' : 'Building level ' + n;
+  $('#loadText').textContent = levelTier(n) && !pic ? (levelTier(n) > 1 ? 'Super Hard level: checking it can be won takes a moment' : 'Hard level: checking it can be won takes a moment') : 'Checking that it can be won';
+  loadShowT = setTimeout(() => { $('#mLoad').hidden = false; }, 120); }   // short builds never flash the screen
+function hideLoading(){ loading = false; clearTimeout(loadShowT); $('#mLoad').hidden = true; }
+function startLevel(n, pic, then){
+  const tok = ++loadTok, key = recipeKey(n, pic);
+  const go = () => { if(tok !== loadTok) return; hideLoading(); startLevelNow(n, pic); if(then) then(); };
+  if(!key || recipes.has(key)){ go(); return; }
+  showLoading(n, pic); ensureRecipe(n, pic, key).then(go, go);
+}
+function startLevelNow(n, pic){
   endAuto();
   importedPic = pic || null;
   const L = buildLevel(n, pic);
@@ -1264,25 +1379,35 @@ const exX = e => e % (G.W + 2) - 1, exY = e => ((e / (G.W + 2)) | 0) - 1;
 const cellC = e => ({ x: bx + (exX(e) + .5) * s, y: by + (exY(e) + .5) * s });
 
 function changed(cells){
-  G.ver++; bfsCache.clear(); trayDirty = true;
+  // a bite only changes the tray when a key frees up or (with hint rings on) the set of reachable colors changes
+  G.ver++; bfsCache.clear(); const exBefore = G.exposed; if(!cells) trayDirty = true;
   if(cells) cells.forEach(i => G.dirty.add(i)); else G.boardDirty = true;
   G.reach = computeReach(G.W, G.H, G.tile, G.kind);
   for(const k of G.keys) if(!k.got && G.reach[ext(k.x, k.y)]){
-    k.got = true; for(let q = 0; q < 4; q++){ const j = (k.y + (q >> 1)) * G.W + k.x + (q & 1); G.kind[j] = 0; G.dirty.add(j); } G.fx.push({ type: 'ring', x: bx + (k.x + 1) * s, y: by + (k.y + 1) * s, t: 0, dur: .6, color: k.color, r: s * 3 });
+    k.got = true; trayDirty = true; for(let q = 0; q < 4; q++){ const j = (k.y + (q >> 1)) * G.W + k.x + (q & 1); G.kind[j] = 0; G.dirty.add(j); } G.fx.push({ type: 'ring', x: bx + (k.x + 1) * s, y: by + (k.y + 1) * s, t: 0, dur: .6, color: k.color, r: s * 3 });
     banner('The ' + k.name + ' key is free. Its locked boxes are open.'); sfx('key');
     burst(bx + (k.x + 1) * s, by + (k.y + 1) * s, k.color, 22);
   }
   const ex = new Set();
   for(let i = 0; i < G.tile.length; i++) if(G.kind[i] === 0 && G.tile[i] >= 0 && adjReach(G.W, G.reach, i)) ex.add(G.tile[i]);
   for(const d of G.doors) if(d.hp > 0 && doorExposed(G.W, d, G.reach)) ex.add(d.color);
+  if(settings.hints && (!exBefore || exBefore.size !== ex.size || [...ex].some(c => !exBefore.has(c)))) trayDirty = true;
   G.exposed = ex;
 }
 function passE(e){ const x = exX(e), y = exY(e); if(x < 0 || y < 0 || x >= G.W || y >= G.H) return true; const i = y * G.W + x; return (G.kind[i] === 0 || G.kind[i] === 3) && G.tile[i] < 0; }
+let gWalk = new Uint8Array(0), gQ = new Int32Array(0);
 function bfs(src){
   const key = src; let B = bfsCache.get(key); if(B) return B;
-  const EW = G.W + 2, EN = EW * (G.H + 2), dist = new Int16Array(EN).fill(-1), prev = new Int32Array(EN).fill(-1), q = [src]; dist[src] = 0;
-  for(let h = 0; h < q.length; h++){ const e = q[h], x = exX(e), y = exY(e);
-    for(const [dx, dy] of N4){ const nx = x + dx, ny = y + dy; if(nx < -1 || ny < -1 || nx > G.W || ny > G.H) continue; const f = (ny + 1) * EW + nx + 1; if(dist[f] < 0 && passE(f)){ dist[f] = dist[e] + 1; prev[f] = e; q.push(f); } } }
+  // Flat walkable grid and a reused queue; neighbours go right, left, down, up (the N4 order), so paths match passE-based BFS.
+  const W = G.W, H = G.H, EW = W + 2, EN = EW * (H + 2), dist = new Int16Array(EN).fill(-1), prev = new Int32Array(EN).fill(-1);
+  if(gWalk.length !== EN){ gWalk = new Uint8Array(EN); gQ = new Int32Array(EN); } gWalk.fill(1);
+  for(let y = 0; y < H; y++){ const r = y * W, re = (y + 1) * EW + 1; for(let x = 0; x < W; x++){ const i = r + x, k = G.kind[i]; gWalk[re + x] = (k === 0 || k === 3) && G.tile[i] < 0 ? 1 : 0; } }
+  let qh = 0, qt = 0; gQ[qt++] = src; dist[src] = 0;
+  while(qh < qt){ const e = gQ[qh++], de = dist[e] + 1, x = e % EW;
+    if(x < EW - 1){ const f = e + 1; if(dist[f] < 0 && gWalk[f]){ dist[f] = de; prev[f] = e; gQ[qt++] = f; } }
+    if(x > 0){ const f = e - 1; if(dist[f] < 0 && gWalk[f]){ dist[f] = de; prev[f] = e; gQ[qt++] = f; } }
+    if(e < EN - EW){ const f = e + EW; if(dist[f] < 0 && gWalk[f]){ dist[f] = de; prev[f] = e; gQ[qt++] = f; } }
+    if(e >= EW){ const f = e - EW; if(dist[f] < 0 && gWalk[f]){ dist[f] = de; prev[f] = e; gQ[qt++] = f; } } }
   B = { dist, prev }; bfsCache.set(key, B); return B;
 }
 function entryFor(si){ const x = slotX[si] != null ? slotX[si] : cw / 2; return ext(Math.max(-1, Math.min(G.W, Math.round((x - bx) / s - .5))), G.H); }
@@ -1488,7 +1613,9 @@ function updateInner(dt){
       if(d > .001){ const ta = Math.atan2(dy, dx); let da = ta - a.ang; while(da > Math.PI) da -= 2 * Math.PI; while(da < -Math.PI) da += 2 * Math.PI; a.ang += da * Math.min(1, dt * 16 * Math.sqrt(SPD)); }
       if(d <= left){ a.x = p.x; a.y = p.y; left -= d; a.i++; } else { a.x += dx / d * left; a.y += dy / d * left; left = 0; }
     }
-    a.phase += v * (a.sp || 1) * ease / (s * .22);
+    // legs follow the walking speed but are capped, so at high speed they don't step further than a frame can show
+    // (past that they alias, like a wagon wheel on film, and the ants look like they're walking in slow motion)
+    a.phase += Math.min(v * (a.sp || 1) * ease / (s * .22), dt * 42);
     if(a.i >= a.pts.length - 1){
       if(a.state === 'go') bite(a);
       else { a.sink = a.sinkMax = SINK; if(a.carry){ burst(nest.x, nest.y, G.pal[a.color], 5); sfx('drop'); G.fx.push({ type: 'ring', x: nest.x, y: nest.y, t: 0, dur: .4, color: G.pal[a.color], r: s * 2.2, flat: .45 }); } }
@@ -1551,6 +1678,10 @@ function drawCell(c, i){
     rr(c, px + g / 2, py - L + g / 2, s - g, s - g, br); c.fillStyle = G.pal[t]; c.fill();
     c.fillStyle = G.shine[t]; c.fillRect(px + g / 2 + br * .6, py - L + g / 2 + s * .07, s - g - br * 1.2, Math.max(.8, s * .09));
     c.fillStyle = 'rgba(0,0,0,.08)'; c.fillRect(px + g / 2 + br * .4, py - L + s - g - Math.max(1, s * .1), s - g - br * .8, Math.max(1, s * .1));
+    if(settings.seams){ const w = Math.max(1, s * .13), other = (dx, dy) => { const nx = x + dx, ny = y + dy; if(nx < 0 || ny < 0 || nx >= W || ny >= G.H) return false; const v = G.tile[ny * W + nx]; return v >= 0 && v !== t; };
+      c.fillStyle = 'rgba(16,10,6,.9)';
+      if(other(-1, 0)) c.fillRect(px, py - L, w, s); if(other(1, 0)) c.fillRect(px + s - w, py - L, w, s);
+      if(other(0, -1)) c.fillRect(px, py - L, s, w); if(other(0, 1)) c.fillRect(px, py - L + s - w, s, w); }
     if(settings.symbols && s >= 7) drawGlyph(c, t, px + s / 2, py - L + s * .5, s * .56); }
   else if(k === 3){ c.fillStyle = 'rgba(62,47,36,.7)'; c.fillRect(px, py, s, s); }
 }
@@ -1684,6 +1815,7 @@ function draw(){
   ctx.strokeStyle = 'rgba(0,0,0,.06)'; ctx.lineWidth = Math.max(1, s * .12); ctx.stroke();
   if(G.boardDirty || G.dirty.size) renderBoard();
   const M = boardPad(); ctx.drawImage(G.bcv, bx - M, by - M, W * s + 2 * M, H * s + 2 * M);
+  remainNote();
   if(G.spot >= 0){ ctx.fillStyle = 'rgba(18,12,22,.66)'; const L = lift();
     for(let i = 0; i < G.tile.length; i++){ if(!solidAt(i)) continue; if(G.tile[i] === G.spot && G.kind[i] !== 1) continue; const di = G.doorAt[i]; if(di >= 0 && G.doors[di].color === G.spot && G.doors[di].hp > 0) continue;
       ctx.fillRect(bx + (i % W) * s, by + ((i / W) | 0) * s - L, s, s + (i + W < G.tile.length && solidAt(i + W) ? 0 : L)); }
@@ -1908,11 +2040,23 @@ function vacuum(c){
   changed(); trayDirty = true; uiDirty = true;
 }
 
+// "Remaining" pill while a color is lit: cubes of that color still in the picture, plus what its doors still need
+let remainLast = '';
+function remainNote(){ let txt = '', c = G.spot;
+  if(c >= 0 && settings.remain){ let n = 0; for(let i = 0; i < G.tile.length; i++) if(G.tile[i] === c) n++;
+    let d = 0; for(const q of G.doors) if(q.color === c && q.hp > 0) d += q.hp;
+    txt = c + '|' + n + '|' + d; if(txt !== remainLast){ const el = $('#remain'); el.innerHTML = `<i style="background:${G.pal[c]}"></i>Remaining: ${n}` + (d ? ` <small>+${d} for doors</small>` : ''); } }
+  if(!txt && remainLast) $('#remain').innerHTML = '';
+  remainLast = txt; }
+
 /* ---------------- banner & modals ---------------- */
 let bannerT = 0;
 function banner(msg, ms){ if(HEADLESS) return; const el = $('#banner'); el.textContent = msg; el.classList.remove('hide'); clearTimeout(bannerT); bannerT = setTimeout(() => el.classList.add('hide'), ms || 2200); }
+// Building a new level runs the solver checks, which can take seconds. Do it for the next level while the win screen
+// sits there, so "Next level" starts right away.
+function prebuildNext(){ if(importedPic || !G || !G.won || !workerOk) return; const n = level + 1; ensureRecipe(n, null, recipeKey(n)).catch(() => {}); }
 function showWin(){
-  sfx('win');
+  sfx('win'); setTimeout(prebuildNext, 300);
   const c = $('#winPic'), x = c.getContext('2d'), b = G.base.src || G.base, k = Math.floor(176 / Math.max(b.W, b.H));
   c.width = b.W * k; c.height = b.H * k; x.clearRect(0, 0, c.width, c.height);
   for(let y = 0; y < b.H; y++) for(let xx = 0; xx < b.W; xx++){ const v = b.grid[y * b.W + xx]; if(v >= 0){ x.fillStyle = b.pal[v]; x.fillRect(xx * k, y * k, k, k); } }
@@ -1951,7 +2095,8 @@ function openSettings(){
   $('#sJump').value = level; $('#sK').value = settings.K; $('#sKV').textContent = settings.K;
   seg('#sCols', [[3, '3'], [4, '4'], [5, '5']], 'cols');
   seg('#sSize', [['S', 'S'], ['M', 'M'], ['L', 'L'], ['XL', 'XL'], ['XXL', 'XXL']], 'size');
-  seg('#sContrast', [['normal', 'Normal'], ['boost', 'Boosted']], 'contrast', applyPalette);
+  seg('#sContrast', [['normal', 'Normal'], ['boost', 'Boosted'], ['strong', 'Strong']], 'contrast', applyPalette);
+  $('#sSeams').checked = settings.seams; $('#sRemain').checked = settings.remain;
   seg('#sAnt', [['S', 'S'], ['M', 'M'], ['L', 'L'], ['XL', 'XL']], 'antSize');
   $('#sHardL').checked = settings.hardLevels; $('#sAuto').checked = settings.autoFinish; $('#sHold').checked = settings.holdSpot; $('#sHap').checked = settings.haptics; $('#sVol').value = settings.vol; $('#sVolV').textContent = Math.round(settings.vol * 100) + '%';
   seg('#sShelf', [['compact', 'Compact'], ['normal', 'Normal'], ['large', 'Large']], 'shelf', () => { applyShelf(); trayDirty = true; requestAnimationFrame(layout); });
@@ -1992,6 +2137,8 @@ stage.addEventListener('contextmenu', e => e.preventDefault());
 window.addEventListener('blur', ffStop);
 $('#sHap').onchange = e => { settings.haptics = e.target.checked; store(); if(settings.haptics) buzz(true); };
 $('#sSym').onchange = e => { settings.symbols = e.target.checked; store(); applyPalette(); };
+$('#sSeams').onchange = e => { settings.seams = e.target.checked; store(); applyPalette(); };
+$('#sRemain').onchange = e => { settings.remain = e.target.checked; store(); };
 $('#sRamp').onchange = e => { settings.ramp = e.target.checked; store(); };
 [['#mPairs', 'pairs'], ['#mMyst', 'mystery'], ['#mDoors', 'doors'], ['#mStones', 'stones'], ['#mKeys', 'keys']].forEach(([id, k]) => $(id).onchange = e => { settings.mech[k] = e.target.checked; store(); });
 $('#sJumpGo').onclick = () => { const v = Math.max(1, Math.min(9999, parseInt($('#sJump').value, 10) || 1)); level = v; store(); closeSettings(); startLevel(level); };
@@ -2151,7 +2298,7 @@ $('#levClose').onclick = closeLevels;
 $('#levPrev').onclick = () => { if(levBusy) return; levStart = Math.max(1, levStart - LEV_PAGE); renderLevels(); };
 $('#levNext').onclick = () => { if(levBusy) return; levStart += LEV_PAGE; renderLevels(); };
 $('#levUnstar').onclick = () => { let n = 1; while(stars[n]) n++; levStart = Math.floor((n - 1) / LEV_PAGE) * LEV_PAGE + 1; renderLevels(); $('#levStatus').textContent = 'Level ' + n + ' is the first without a star.'; };
-$('#levBot').onclick = () => { closeLevels(); startLevel(level, importedPic); G.bot = true; G.botPlayed = true; if(settings.speed < 4){ settings.speed = 4; syncSpeed(); } banner('The solver is playing. No star for this run.', 3000); };
+$('#levBot').onclick = () => { closeLevels(); startLevel(level, importedPic, () => { G.bot = true; G.botPlayed = true; if(settings.speed < 4){ settings.speed = 4; syncSpeed(); } banner('The solver is playing. No star for this run.', 3000); }); };
 // Builds every level on the page exactly as the game would (same seed, settings and screen size) and runs the solver on it.
 $('#levCheck').onclick = () => {
   if(levBusy){ levBusy = false; return; }
@@ -2162,7 +2309,19 @@ $('#levCheck').onclick = () => {
   const step = () => {
     if(!levBusy || !jobs.length){ levBusy = false; $('#levCheck').textContent = 'Check this page';
       $('#levStatus').textContent = 'Checked ' + done + ': ' + bad + ' impossible, ' + broke + ' fall apart with the real ants, ' + plan + ' need planning (' + ((performance.now() - t0) / 1000).toFixed(1) + ' s).'; renderLevels(); return; }
-    const [n, d] = jobs.shift(), keep = settings.diff; let res = 'u';
+    const [n, d] = jobs.shift();
+    const finish = res => { levCheck.set(n + '|' + d + '|' + sk, res); done++; if(res === 'x') bad++; if(res === 'a') plan++; if(res === 'f') broke++;
+      $('#levStatus').textContent = 'Checking level ' + n + ' on ' + d + '… ' + done + ' / ' + (done + jobs.length);
+      if(done % 3 === 0) renderLevels(); setTimeout(step, 0); };
+    if(workerOk){ $('#levStatus').textContent = 'Checking level ' + n + ' on ' + d + '… ' + done + ' / ' + (done + jobs.length + 1);
+      workerJob({ job: 'check', n, d }).then(m => { (m.recipes || []).forEach(([k, v]) => { if(!recipes.has(k)) rememberRecipe(k, v); }); finish(m.res); }, () => finish(checkLevelHere(n, d))); return; }
+    finish(checkLevelHere(n, d));
+  };
+  renderLevels(); setTimeout(step, 30);
+};
+// One level checker verdict: g plain play wins, a needs planning, f the real ants can't win the plan, x impossible, u unknown
+function checkLevelHere(n, d){
+    const keep = settings.diff; let res = 'u';
     try{ settings.diff = d; const L = buildLevel(n);
       if(L){ const S = settings.slots, gr = solveLevel(L, S, { greedy: true, nodes: 1e9, ms: 1e9 });
         if(gr.ok === true && playtest(L, S, gr.plan).ok === true) res = 'g';
@@ -2170,13 +2329,8 @@ $('#levCheck').onclick = () => {
           // the solver's win is replayed with the real ants; if they can't win it either, the level is marked as failing
           res = r.ok === true ? (realWin(L, S, r) ? 'a' : 'f') : r.ok === false ? 'x' : 'u'; } }
     } finally { settings.diff = keep; }
-    levCheck.set(n + '|' + d + '|' + sk, res); done++; if(res === 'x') bad++; if(res === 'a') plan++; if(res === 'f') broke++;
-    $('#levStatus').textContent = 'Checking level ' + n + ' on ' + d + '… ' + done + ' / ' + (done + jobs.length);
-    if(done % 3 === 0) renderLevels();
-    setTimeout(step, 0);
-  };
-  renderLevels(); setTimeout(step, 30);
-};
+    return res;
+}
 
 /* ---------------- loop ---------------- */
 // The browser calls frame() once per screen refresh (60, 90, 120, 144 Hz...). A web page can't draw faster than the screen
@@ -2198,15 +2352,13 @@ function frame(now){
     fpsMeter.screen = Math.round(1000 / med); fpsMeter.actual = Math.round(fpsMeter.drawn * 1000 / (now - fpsMeter.t0)); fpsMeter.drawn = 0; fpsMeter.t0 = now;
     if(!$('#mSet').hidden) fpsNote(); }
   const dt = Math.min(.05, (now - last) / 1000); last = now;
-  if(G && !paused && $('#mWin').hidden) update(dt);
+  if(G && !paused && !loading && $('#mWin').hidden) update(dt);
   if(G){ if(trayDirty) renderTray(); if(uiDirty) renderSlots(); draw(); }
 }
 window.addEventListener('resize', layout);
 new ResizeObserver(() => layout()).observe(stage);
 document.addEventListener('visibilitychange', () => { last = performance.now(); });
-syncSpeed();
-startLevel(level);
-requestAnimationFrame(frame);
+if(!IN_WORKER){ syncSpeed(); startLevel(level); requestAnimationFrame(frame); }
 </script>
 <script>
 if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')){
