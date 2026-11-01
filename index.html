@@ -2298,7 +2298,7 @@ $('#levClose').onclick = closeLevels;
 $('#levPrev').onclick = () => { if(levBusy) return; levStart = Math.max(1, levStart - LEV_PAGE); renderLevels(); };
 $('#levNext').onclick = () => { if(levBusy) return; levStart += LEV_PAGE; renderLevels(); };
 $('#levUnstar').onclick = () => { let n = 1; while(stars[n]) n++; levStart = Math.floor((n - 1) / LEV_PAGE) * LEV_PAGE + 1; renderLevels(); $('#levStatus').textContent = 'Level ' + n + ' is the first without a star.'; };
-$('#levBot').onclick = () => { closeLevels(); startLevel(level, importedPic, () => { G.bot = true; G.botPlayed = true; if(settings.speed < 4){ settings.speed = 4; syncSpeed(); } banner('The solver is playing. No star for this run.', 3000); }); };
+$('#levBot').onclick = () => { closeLevels(); startLevel(level, importedPic, () => { G.bot = true; G.botPlayed = true; settings.speed = 0.75; syncSpeed(); banner('The solver is playing. No star for this run.', 3000); }); };
 // Builds every level on the page exactly as the game would (same seed, settings and screen size) and runs the solver on it.
 $('#levCheck').onclick = () => {
   if(levBusy){ levBusy = false; return; }
