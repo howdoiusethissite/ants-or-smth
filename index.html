@@ -171,6 +171,14 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
 .lv .dots i.g{ border-color:#3f9a3a; } .lv .dots i.a{ border-color:#d98a12; } .lv .dots i.x{ border-color:#c62f3a; background:#c62f3a; } .lv .dots i.u{ border-color:#8a7763; }
 .lv .dots i.f{ border-color:#c62f3a; border-style:dashed; }
 .lv .dots i.run{ border-color:var(--ink); border-style:dotted; }
+#mLoad{ z-index:60; background:rgba(28,20,14,.45); }
+.loadsheet{ text-align:center; max-width:300px; }
+.loadsheet p{ margin:2px 0 0; }
+.loadants{ display:flex; justify-content:center; gap:10px; margin:6px 0 10px; }
+.loadants i{ width:14px; height:14px; border-radius:50%; background:var(--honey); animation:loadHop 1s ease-in-out infinite; }
+.loadants i:nth-child(2){ animation-delay:.15s; } .loadants i:nth-child(3){ animation-delay:.3s; }
+@keyframes loadHop{ 0%,100%{ transform:translateY(0); opacity:.5 } 40%{ transform:translateY(-10px); opacity:1 } }
+@media (prefers-reduced-motion: reduce){ .loadants i{ animation:none; opacity:.8; } }
 .levkey{ font-size:.75rem; color:#8a7763; margin:8px 0 2px; line-height:1.35; }
 @media (prefers-reduced-motion: reduce){ .shake,.pop{ animation:none; } }
 </style>
@@ -204,6 +212,11 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
 <div id="banner" class="hide"></div>
 
 <div id="hardSplash" hidden></div>
+<div class="modal" id="mLoad" hidden><div class="sheet loadsheet" role="status" aria-live="polite">
+  <div class="loadants" aria-hidden="true"><i></i><i></i><i></i></div>
+  <h2 id="loadTitle">Building level</h2>
+  <p id="loadText">Checking that it can be won</p>
+</div></div>
 <div class="modal" id="mWin" hidden><div class="sheet" style="text-align:center">
   <h2 id="winTitle">Picture cleared</h2>
   <canvas id="winPic" width="176" height="176"></canvas>
@@ -288,11 +301,41 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
     <button class="btn" id="sRestart">Restart level</button>
     <button class="btn go" id="sClose">Done</button>
   </div>
-  <div class="ver">Build 8</div>
+  <div class="ver">Build 9</div>
 </div></div>
 
 <script>
+// Stand-ins for the page so the game script can run inside the level-building worker. Anything it touches that isn't
+// listed here is a harmless dummy. The stage reports the real stage size sent with each job.
+const WORKER_PRELUDE = `'use strict';
+let __dims = { w: 400, h: 440, cw: 400, ch: 440, dpr: 1 };
+const __D = (() => { let D; const f = function(){}; D = new Proxy(f, {
+  get(t, k){ if(k === Symbol.iterator) return function*(){}; if(k === Symbol.toPrimitive) return () => 0; if(k === 'length') return 0; if(k === 'then') return undefined; return D; },
+  set(){ return true; }, apply(){ return D; }, construct(){ return D; } }); return D; })();
+const __stage = new Proxy({ getBoundingClientRect: () => ({ left: 0, top: 0, width: __dims.w, height: __dims.h, right: __dims.w, bottom: __dims.h }) }, {
+  get(t, k){ if(k === 'clientWidth') return __dims.cw; if(k === 'clientHeight') return __dims.ch; return k in t ? t[k] : __D; }, set(){ return true; } });
+self.document = new Proxy({}, { get(t, k){ if(k === 'querySelector') return s => s === '#stage' ? __stage : __D; return __D; } });
+self.window = new Proxy({}, { get(t, k){ if(k === 'devicePixelRatio') return __dims.dpr; if(k === 'AudioContext' || k === 'webkitAudioContext') return undefined; return __D; } });
+self.localStorage = { getItem: () => null, setItem(){}, removeItem(){} };
+self.ResizeObserver = class { observe(){} };
+self.requestAnimationFrame = () => 0;
+`;
+const WORKER_TAIL = `
+self.onmessage = e => { const m = e.data;
+  try{
+    for(const k of Object.keys(settings)) if(!(k in m.settings)) delete settings[k];
+    Object.assign(settings, m.settings); __dims = m.dims; slotX = m.slotX || []; cw = m.dims.w; ch = m.dims.h;   // the page sets these in layout(); ants start at the stage bottom
+    if(m.job === 'build'){ const key = recipeKey(m.n, m.pic || undefined); buildLevel(m.n, m.pic || undefined);
+      postMessage({ id: m.id, rec: recipes.get(key) || { fb: true } }); }
+    else if(m.job === 'check'){ const res = checkLevelHere(m.n, m.d);
+      postMessage({ id: m.id, res, recipes: [...recipes].filter(([k]) => !k.startsWith('pic')) }); }
+  }catch(err){ postMessage({ id: m.id, error: String(err && err.message || err) }); }
+};
+`;
+</script>
+<script id="game">
 'use strict';
+const IN_WORKER = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
 const $ = s => document.querySelector(s);
 const cv = $('#cv'), ctx = cv.getContext('2d');
 const stage = $('#stage'), slotsEl = $('#slots'), trayEl = $('#tray');
@@ -957,8 +1000,8 @@ function buildLevel(n, pic){
   const keep = (L, rec) => { if(key) rememberRecipe(key, rec); return L; };
   let okFull = null, okRec = null;
   try {
-    if(known){ const L = known.last ? last(known.at) : main(known.tt, known.at); if(L) return L; recipes.delete(key); }
-    for(let tt = tier; tt >= 0; tt--){
+    if(known && !known.fb){ const L = known.last ? last(known.at) : main(known.tt, known.at); if(L) return L; recipes.delete(key); }
+    if(!(known && known.fb)) for(let tt = tier; tt >= 0; tt--){
       const tries = tt ? 30 : 50;
       for(let at = 0; at < tries; at++){
         const L = main(tt, at);
@@ -971,8 +1014,9 @@ function buildLevel(n, pic){
       if(okFull) return keep(okFull, okRec);
     }
     // last resort: no keys, doors or stones, gentlest boxes, still checked
-    for(let at = 0; at < 30; at++){ const L = last(at); if(L && realWin(L, S, solveLevel(L, S, { nodes: 400, ms: 500 }))) return keep(L, { last: true, at }); }
+    if(!(known && known.fb)) for(let at = 0; at < 30; at++){ const L = last(at); if(L && realWin(L, S, solveLevel(L, S, { nodes: 400, ms: 500 }))) return keep(L, { last: true, at }); }
   } finally { BUILD_TIER = 0; }
+  if(key && !known) rememberRecipe(key, { fb: true });
   const L = tryBuild(n, base, rngOf(n), false, false, 1); if(L){ L.tier = 0; L.unverified = true; } return L;
 }
 // Plays the level greedily with the real slot count; a level is only kept if this succeeds.
@@ -1260,7 +1304,50 @@ const LANE = 3, SPAWN = .16, MAXP = 14;
 let bfsCache = new Map(), uiDirty = true, trayDirty = true, mode = null, jamTimer = 0;
 
 function tileCount(L){ let k = 0; for(let i = 0; i < L.tile.length; i++) if(L.tile[i] >= 0) k++; return Math.max(60, k); }
-function startLevel(n, pic){
+/* ---------------- background builds ----------------
+   Building a level the first time runs the solver checks, which can take seconds. That work runs in a Web Worker made from
+   this same script (with stand-ins for the page), so the screen never freezes. The worker sends back the build recipe and
+   the page then rebuilds just that attempt, which is instant. If workers are unavailable, it builds here behind the
+   loading screen instead. */
+let worker = null, workerOk = !IN_WORKER, jobSeq = 0;
+const jobs = new Map(), pendingBuild = new Map();
+function getWorker(){
+  if(!workerOk) return null; if(worker) return worker;
+  try{
+    const src = document.getElementById('game').textContent;
+    worker = new Worker(URL.createObjectURL(new Blob([WORKER_PRELUDE, src, WORKER_TAIL], { type: 'text/javascript' })));
+    worker.onmessage = e => { const m = e.data, j = jobs.get(m.id); if(!j) return; jobs.delete(m.id); if(m.error) j.no(new Error(m.error)); else j.ok(m); };
+    worker.onerror = e => { e.preventDefault && e.preventDefault(); workerDead(); };
+  }catch(_){ workerDead(); }
+  return worker;
+}
+function workerDead(){ workerOk = false; try{ worker && worker.terminate(); }catch(_){} worker = null; for(const j of jobs.values()) j.no(new Error('worker')); jobs.clear(); }
+function workerJob(msg){ const w = getWorker(); if(!w) return Promise.reject(new Error('no worker'));
+  const r = stage.getBoundingClientRect();
+  msg.id = ++jobSeq; msg.settings = JSON.parse(JSON.stringify(settings)); msg.dims = { w: r.width, h: r.height, cw: stage.clientWidth, ch: stage.clientHeight, dpr: window.devicePixelRatio || 1 }; msg.slotX = slotX.slice();
+  return new Promise((ok, no) => { jobs.set(msg.id, { ok, no }); w.postMessage(msg); }); }
+// Makes sure the recipe for level n (or an imported picture) is known. Resolves once it is.
+function ensureRecipe(n, pic, key){
+  if(!key || recipes.has(key)) return Promise.resolve();
+  if(pendingBuild.has(key)) return pendingBuild.get(key);
+  const viaWorker = () => workerJob({ job: 'build', n, pic: pic || null }).then(m => { rememberRecipe(key, m.rec); });
+  const here = () => new Promise(res => { if(loading){ clearTimeout(loadShowT); $('#mLoad').hidden = false; } res(); }).then(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(() => { try{ buildLevel(n, pic); }catch(_){} res(); }))));
+  const p = (workerOk ? viaWorker().catch(here) : here()).finally(() => pendingBuild.delete(key));
+  pendingBuild.set(key, p); return p;
+}
+let loadTok = 0, loadShowT = 0, loading = false;
+function showLoading(n, pic){ loading = true; clearTimeout(loadShowT);
+  $('#loadTitle').textContent = pic ? 'Building your picture' : 'Building level ' + n;
+  $('#loadText').textContent = levelTier(n) && !pic ? (levelTier(n) > 1 ? 'Super Hard level: checking it can be won takes a moment' : 'Hard level: checking it can be won takes a moment') : 'Checking that it can be won';
+  loadShowT = setTimeout(() => { $('#mLoad').hidden = false; }, 120); }   // short builds never flash the screen
+function hideLoading(){ loading = false; clearTimeout(loadShowT); $('#mLoad').hidden = true; }
+function startLevel(n, pic, then){
+  const tok = ++loadTok, key = recipeKey(n, pic);
+  const go = () => { if(tok !== loadTok) return; hideLoading(); startLevelNow(n, pic); if(then) then(); };
+  if(!key || recipes.has(key)){ go(); return; }
+  showLoading(n, pic); ensureRecipe(n, pic, key).then(go, go);
+}
+function startLevelNow(n, pic){
   endAuto();
   importedPic = pic || null;
   const L = buildLevel(n, pic);
@@ -1526,7 +1613,9 @@ function updateInner(dt){
       if(d > .001){ const ta = Math.atan2(dy, dx); let da = ta - a.ang; while(da > Math.PI) da -= 2 * Math.PI; while(da < -Math.PI) da += 2 * Math.PI; a.ang += da * Math.min(1, dt * 16 * Math.sqrt(SPD)); }
       if(d <= left){ a.x = p.x; a.y = p.y; left -= d; a.i++; } else { a.x += dx / d * left; a.y += dy / d * left; left = 0; }
     }
-    a.phase += v * (a.sp || 1) * ease / (s * .22);
+    // legs follow the walking speed but are capped, so at high speed they don't step further than a frame can show
+    // (past that they alias, like a wagon wheel on film, and the ants look like they're walking in slow motion)
+    a.phase += Math.min(v * (a.sp || 1) * ease / (s * .22), dt * 42);
     if(a.i >= a.pts.length - 1){
       if(a.state === 'go') bite(a);
       else { a.sink = a.sinkMax = SINK; if(a.carry){ burst(nest.x, nest.y, G.pal[a.color], 5); sfx('drop'); G.fx.push({ type: 'ring', x: nest.x, y: nest.y, t: 0, dur: .4, color: G.pal[a.color], r: s * 2.2, flat: .45 }); } }
@@ -1965,10 +2054,9 @@ let bannerT = 0;
 function banner(msg, ms){ if(HEADLESS) return; const el = $('#banner'); el.textContent = msg; el.classList.remove('hide'); clearTimeout(bannerT); bannerT = setTimeout(() => el.classList.add('hide'), ms || 2200); }
 // Building a new level runs the solver checks, which can take seconds. Do it for the next level while the win screen
 // sits there, so "Next level" starts right away.
-function prebuildNext(){ if(importedPic || !G || !G.won) return; const n = level + 1;
-  if(recipes.has(recipeKey(n))) return; try{ buildLevel(n); }catch(_){} }
+function prebuildNext(){ if(importedPic || !G || !G.won || !workerOk) return; const n = level + 1; ensureRecipe(n, null, recipeKey(n)).catch(() => {}); }
 function showWin(){
-  sfx('win'); setTimeout(prebuildNext, 1400);
+  sfx('win'); setTimeout(prebuildNext, 300);
   const c = $('#winPic'), x = c.getContext('2d'), b = G.base.src || G.base, k = Math.floor(176 / Math.max(b.W, b.H));
   c.width = b.W * k; c.height = b.H * k; x.clearRect(0, 0, c.width, c.height);
   for(let y = 0; y < b.H; y++) for(let xx = 0; xx < b.W; xx++){ const v = b.grid[y * b.W + xx]; if(v >= 0){ x.fillStyle = b.pal[v]; x.fillRect(xx * k, y * k, k, k); } }
@@ -2210,7 +2298,7 @@ $('#levClose').onclick = closeLevels;
 $('#levPrev').onclick = () => { if(levBusy) return; levStart = Math.max(1, levStart - LEV_PAGE); renderLevels(); };
 $('#levNext').onclick = () => { if(levBusy) return; levStart += LEV_PAGE; renderLevels(); };
 $('#levUnstar').onclick = () => { let n = 1; while(stars[n]) n++; levStart = Math.floor((n - 1) / LEV_PAGE) * LEV_PAGE + 1; renderLevels(); $('#levStatus').textContent = 'Level ' + n + ' is the first without a star.'; };
-$('#levBot').onclick = () => { closeLevels(); startLevel(level, importedPic); G.bot = true; G.botPlayed = true; if(settings.speed < 4){ settings.speed = 4; syncSpeed(); } banner('The solver is playing. No star for this run.', 3000); };
+$('#levBot').onclick = () => { closeLevels(); startLevel(level, importedPic, () => { G.bot = true; G.botPlayed = true; if(settings.speed < 4){ settings.speed = 4; syncSpeed(); } banner('The solver is playing. No star for this run.', 3000); }); };
 // Builds every level on the page exactly as the game would (same seed, settings and screen size) and runs the solver on it.
 $('#levCheck').onclick = () => {
   if(levBusy){ levBusy = false; return; }
@@ -2221,7 +2309,19 @@ $('#levCheck').onclick = () => {
   const step = () => {
     if(!levBusy || !jobs.length){ levBusy = false; $('#levCheck').textContent = 'Check this page';
       $('#levStatus').textContent = 'Checked ' + done + ': ' + bad + ' impossible, ' + broke + ' fall apart with the real ants, ' + plan + ' need planning (' + ((performance.now() - t0) / 1000).toFixed(1) + ' s).'; renderLevels(); return; }
-    const [n, d] = jobs.shift(), keep = settings.diff; let res = 'u';
+    const [n, d] = jobs.shift();
+    const finish = res => { levCheck.set(n + '|' + d + '|' + sk, res); done++; if(res === 'x') bad++; if(res === 'a') plan++; if(res === 'f') broke++;
+      $('#levStatus').textContent = 'Checking level ' + n + ' on ' + d + '… ' + done + ' / ' + (done + jobs.length);
+      if(done % 3 === 0) renderLevels(); setTimeout(step, 0); };
+    if(workerOk){ $('#levStatus').textContent = 'Checking level ' + n + ' on ' + d + '… ' + done + ' / ' + (done + jobs.length + 1);
+      workerJob({ job: 'check', n, d }).then(m => { (m.recipes || []).forEach(([k, v]) => { if(!recipes.has(k)) rememberRecipe(k, v); }); finish(m.res); }, () => finish(checkLevelHere(n, d))); return; }
+    finish(checkLevelHere(n, d));
+  };
+  renderLevels(); setTimeout(step, 30);
+};
+// One level checker verdict: g plain play wins, a needs planning, f the real ants can't win the plan, x impossible, u unknown
+function checkLevelHere(n, d){
+    const keep = settings.diff; let res = 'u';
     try{ settings.diff = d; const L = buildLevel(n);
       if(L){ const S = settings.slots, gr = solveLevel(L, S, { greedy: true, nodes: 1e9, ms: 1e9 });
         if(gr.ok === true && playtest(L, S, gr.plan).ok === true) res = 'g';
@@ -2229,13 +2329,8 @@ $('#levCheck').onclick = () => {
           // the solver's win is replayed with the real ants; if they can't win it either, the level is marked as failing
           res = r.ok === true ? (realWin(L, S, r) ? 'a' : 'f') : r.ok === false ? 'x' : 'u'; } }
     } finally { settings.diff = keep; }
-    levCheck.set(n + '|' + d + '|' + sk, res); done++; if(res === 'x') bad++; if(res === 'a') plan++; if(res === 'f') broke++;
-    $('#levStatus').textContent = 'Checking level ' + n + ' on ' + d + '… ' + done + ' / ' + (done + jobs.length);
-    if(done % 3 === 0) renderLevels();
-    setTimeout(step, 0);
-  };
-  renderLevels(); setTimeout(step, 30);
-};
+    return res;
+}
 
 /* ---------------- loop ---------------- */
 // The browser calls frame() once per screen refresh (60, 90, 120, 144 Hz...). A web page can't draw faster than the screen
@@ -2257,15 +2352,13 @@ function frame(now){
     fpsMeter.screen = Math.round(1000 / med); fpsMeter.actual = Math.round(fpsMeter.drawn * 1000 / (now - fpsMeter.t0)); fpsMeter.drawn = 0; fpsMeter.t0 = now;
     if(!$('#mSet').hidden) fpsNote(); }
   const dt = Math.min(.05, (now - last) / 1000); last = now;
-  if(G && !paused && $('#mWin').hidden) update(dt);
+  if(G && !paused && !loading && $('#mWin').hidden) update(dt);
   if(G){ if(trayDirty) renderTray(); if(uiDirty) renderSlots(); draw(); }
 }
 window.addEventListener('resize', layout);
 new ResizeObserver(() => layout()).observe(stage);
 document.addEventListener('visibilitychange', () => { last = performance.now(); });
-syncSpeed();
-startLevel(level);
-requestAnimationFrame(frame);
+if(!IN_WORKER){ syncSpeed(); startLevel(level); requestAnimationFrame(frame); }
 </script>
 <script>
 if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')){
