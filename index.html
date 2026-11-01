@@ -288,7 +288,7 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
     <button class="btn" id="sRestart">Restart level</button>
     <button class="btn go" id="sClose">Done</button>
   </div>
-  <div class="ver">Build 7</div>
+  <div class="ver">Build 8</div>
 </div></div>
 
 <script>
@@ -1071,9 +1071,18 @@ function solveLevel(src, S, opt){
   let nodes = 0, out = null;
   const memo = new Set();
   const pass = (st, x, y) => { if(x < 0 || y < 0 || x >= W || y >= H) return true; const i = y * W + x; return (st.kind[i] === 0 || st.kind[i] === 3) && st.tile[i] < 0; };
-  function bfs(st, src){ const d = new Int32Array(EN).fill(-1), q = [src]; d[src] = 0;
-    for(let h = 0; h < q.length; h++){ const e = q[h], x = e % EW - 1, y = ((e / EW) | 0) - 1;
-      for(let k = 0; k < 4; k++){ const nx = x + N4[k][0], ny = y + N4[k][1]; if(nx < -1 || ny < -1 || nx > W || ny > H) continue; const f = (ny + 1) * EW + nx + 1; if(d[f] < 0 && pass(st, nx, ny)){ d[f] = d[e] + 1; q.push(f); } } }
+  // Distances from src over the padded grid (ring around the board always open). Same result as a plain BFS with pass(),
+  // but walkability is laid out once per call in a flat array and the queue is reused, which makes it several times faster.
+  const walkable = new Uint8Array(EN).fill(1), bq = new Int32Array(EN), exOf = new Int16Array(EN);
+  for(let e = 0; e < EN; e++) exOf[e] = e % EW;
+  function bfs(st, src){
+    for(let y = 0; y < H; y++){ const r = y * W, re = (y + 1) * EW + 1; for(let x = 0; x < W; x++){ const i = r + x, k = st.kind[i]; walkable[re + x] = (k === 0 || k === 3) && st.tile[i] < 0 ? 1 : 0; } }
+    const d = new Int32Array(EN).fill(-1); let qh = 0, qt = 0; bq[qt++] = src; d[src] = 0;
+    while(qh < qt){ const e = bq[qh++], de = d[e] + 1, x = exOf[e];
+      if(x > 0){ const f = e - 1; if(d[f] < 0 && walkable[f]){ d[f] = de; bq[qt++] = f; } }
+      if(x < EW - 1){ const f = e + 1; if(d[f] < 0 && walkable[f]){ d[f] = de; bq[qt++] = f; } }
+      if(e >= EW){ const f = e - EW; if(d[f] < 0 && walkable[f]){ d[f] = de; bq[qt++] = f; } }
+      if(e < EN - EW){ const f = e + EW; if(d[f] < 0 && walkable[f]){ d[f] = de; bq[qt++] = f; } } }
     return d; }
   const cellD = (d, x, y) => { let b = 1e9; for(let k = 0; k < 4; k++){ const nx = x + N4[k][0], ny = y + N4[k][1]; if(nx < -1 || nx > W) continue; const v = d[(ny + 1) * EW + nx + 1]; if(v >= 0 && v < b) b = v; } return b; };
   function crack(st, i){ const x = i % W, y = (i / W) | 0; for(let k = 0; k < 4; k++){ const nx = x + N4[k][0], ny = y + N4[k][1]; if(nx < 0 || ny < 0 || nx >= W || ny >= H) continue; const j = ny * W + nx; if(st.kind[j] === 1 && --st.rock[j] <= 0) st.kind[j] = 0; } }
@@ -1095,8 +1104,8 @@ function solveLevel(src, S, opt){
   function settle(st){
     let t = 0, ver = 0; const fl = [], spawnT = new Array(S).fill(0), pend = new Array(S).fill(0), stamp = new Array(S).fill(-1), lists = new Array(S);
     const claimed = new Uint8Array(N), dClaim = new Int16Array(doors.length);
-    let d0 = bfs(st, entryE[entries.length >> 1]);
-    const keyCheck = () => keys.forEach((k, j) => { if(!st.key[j] && d0[(k.y + 1) * EW + k.x + 1] >= 0){ st.key[j] = 1; for(let q = 0; q < 4; q++) st.kind[(k.y + (q >> 1)) * W + k.x + (q & 1)] = 0; ver++; } });
+    let d0 = bfs(st, entryE[entries.length >> 1]), d0v = -1;
+    const keyCheck = () => { d0v = ver; keys.forEach((k, j) => { if(!st.key[j] && d0[(k.y + 1) * EW + k.x + 1] >= 0){ st.key[j] = 1; for(let q = 0; q < 4; q++) st.kind[(k.y + (q >> 1)) * W + k.x + (q & 1)] = 0; ver++; } }); };
     keyCheck();
     for(let guard = 0; guard < 20000; guard++){
       // ants arriving this bucket take their cube
@@ -1110,7 +1119,7 @@ function solveLevel(src, S, opt){
       for(let k = 0; k < S; k++){ const q = st.slots[k]; if(!q || q.rem <= 0) continue;
         while(q.rem > 0 && spawnT[k] <= t){
           if(pend[k] >= cap){ spawnT[k] = t + .05; break; }
-          if(stamp[k] !== ver){ const c = boxes[q.i].color, d = bfs(st, entryE[Math.min(k, entryE.length - 1)]), L = [];
+          if(stamp[k] !== ver){ const c = boxes[q.i].color, ek = Math.min(k, entryE.length - 1), d = ek === entries.length >> 1 && d0v === ver ? d0 : bfs(st, entryE[ek]), L = [];
             for(let i = 0; i < N; i++){ if(st.tile[i] !== c || st.kind[i] !== 0) continue; const v = cellD(d, i % W, (i / W) | 0); if(v < 1e9) L.push([jit ? v + jit() * 1.5 : v, i]); }
             doors.forEach((dr, j) => { if(st.dhp[j] > 0 && dr.color === c){ const v = doorD(d, dr); if(v < 1e9) L.push([jit ? v + jit() * 1.5 : v, N + j]); } });
             L.sort((a, b) => a[0] - b[0] || a[1] - b[1]); lists[k] = { L, p: 0 }; stamp[k] = ver; }
@@ -1283,25 +1292,35 @@ const exX = e => e % (G.W + 2) - 1, exY = e => ((e / (G.W + 2)) | 0) - 1;
 const cellC = e => ({ x: bx + (exX(e) + .5) * s, y: by + (exY(e) + .5) * s });
 
 function changed(cells){
-  G.ver++; bfsCache.clear(); trayDirty = true;
+  // a bite only changes the tray when a key frees up or (with hint rings on) the set of reachable colors changes
+  G.ver++; bfsCache.clear(); const exBefore = G.exposed; if(!cells) trayDirty = true;
   if(cells) cells.forEach(i => G.dirty.add(i)); else G.boardDirty = true;
   G.reach = computeReach(G.W, G.H, G.tile, G.kind);
   for(const k of G.keys) if(!k.got && G.reach[ext(k.x, k.y)]){
-    k.got = true; for(let q = 0; q < 4; q++){ const j = (k.y + (q >> 1)) * G.W + k.x + (q & 1); G.kind[j] = 0; G.dirty.add(j); } G.fx.push({ type: 'ring', x: bx + (k.x + 1) * s, y: by + (k.y + 1) * s, t: 0, dur: .6, color: k.color, r: s * 3 });
+    k.got = true; trayDirty = true; for(let q = 0; q < 4; q++){ const j = (k.y + (q >> 1)) * G.W + k.x + (q & 1); G.kind[j] = 0; G.dirty.add(j); } G.fx.push({ type: 'ring', x: bx + (k.x + 1) * s, y: by + (k.y + 1) * s, t: 0, dur: .6, color: k.color, r: s * 3 });
     banner('The ' + k.name + ' key is free. Its locked boxes are open.'); sfx('key');
     burst(bx + (k.x + 1) * s, by + (k.y + 1) * s, k.color, 22);
   }
   const ex = new Set();
   for(let i = 0; i < G.tile.length; i++) if(G.kind[i] === 0 && G.tile[i] >= 0 && adjReach(G.W, G.reach, i)) ex.add(G.tile[i]);
   for(const d of G.doors) if(d.hp > 0 && doorExposed(G.W, d, G.reach)) ex.add(d.color);
+  if(settings.hints && (!exBefore || exBefore.size !== ex.size || [...ex].some(c => !exBefore.has(c)))) trayDirty = true;
   G.exposed = ex;
 }
 function passE(e){ const x = exX(e), y = exY(e); if(x < 0 || y < 0 || x >= G.W || y >= G.H) return true; const i = y * G.W + x; return (G.kind[i] === 0 || G.kind[i] === 3) && G.tile[i] < 0; }
+let gWalk = new Uint8Array(0), gQ = new Int32Array(0);
 function bfs(src){
   const key = src; let B = bfsCache.get(key); if(B) return B;
-  const EW = G.W + 2, EN = EW * (G.H + 2), dist = new Int16Array(EN).fill(-1), prev = new Int32Array(EN).fill(-1), q = [src]; dist[src] = 0;
-  for(let h = 0; h < q.length; h++){ const e = q[h], x = exX(e), y = exY(e);
-    for(const [dx, dy] of N4){ const nx = x + dx, ny = y + dy; if(nx < -1 || ny < -1 || nx > G.W || ny > G.H) continue; const f = (ny + 1) * EW + nx + 1; if(dist[f] < 0 && passE(f)){ dist[f] = dist[e] + 1; prev[f] = e; q.push(f); } } }
+  // Flat walkable grid and a reused queue; neighbours go right, left, down, up (the N4 order), so paths match passE-based BFS.
+  const W = G.W, H = G.H, EW = W + 2, EN = EW * (H + 2), dist = new Int16Array(EN).fill(-1), prev = new Int32Array(EN).fill(-1);
+  if(gWalk.length !== EN){ gWalk = new Uint8Array(EN); gQ = new Int32Array(EN); } gWalk.fill(1);
+  for(let y = 0; y < H; y++){ const r = y * W, re = (y + 1) * EW + 1; for(let x = 0; x < W; x++){ const i = r + x, k = G.kind[i]; gWalk[re + x] = (k === 0 || k === 3) && G.tile[i] < 0 ? 1 : 0; } }
+  let qh = 0, qt = 0; gQ[qt++] = src; dist[src] = 0;
+  while(qh < qt){ const e = gQ[qh++], de = dist[e] + 1, x = e % EW;
+    if(x < EW - 1){ const f = e + 1; if(dist[f] < 0 && gWalk[f]){ dist[f] = de; prev[f] = e; gQ[qt++] = f; } }
+    if(x > 0){ const f = e - 1; if(dist[f] < 0 && gWalk[f]){ dist[f] = de; prev[f] = e; gQ[qt++] = f; } }
+    if(e < EN - EW){ const f = e + EW; if(dist[f] < 0 && gWalk[f]){ dist[f] = de; prev[f] = e; gQ[qt++] = f; } }
+    if(e >= EW){ const f = e - EW; if(dist[f] < 0 && gWalk[f]){ dist[f] = de; prev[f] = e; gQ[qt++] = f; } } }
   B = { dist, prev }; bfsCache.set(key, B); return B;
 }
 function entryFor(si){ const x = slotX[si] != null ? slotX[si] : cw / 2; return ext(Math.max(-1, Math.min(G.W, Math.round((x - bx) / s - .5))), G.H); }
