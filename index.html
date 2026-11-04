@@ -51,6 +51,8 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
   font-weight:700; font-size:1.05rem; pointer-events:none; white-space:nowrap; display:flex; align-items:center; gap:8px; }
 #remain:empty{ display:none; }
 #remain i{ width:16px; height:16px; border-radius:5px; border:2px solid #fff8ea; }
+#remain{ flex-wrap:wrap; justify-content:center; row-gap:2px; max-width:calc(100% - 24px); }
+#remain .pn{ flex-basis:100%; text-align:center; font-size:.82rem; color:#ffd36b; font-weight:600; }
 .ver{ font-size:.72rem; color:#8a7763; text-align:center; margin-top:10px; }
 
 #slots{ display:grid; gap:7px; padding:0 22px; height:calc(46px * var(--u, 1)); max-width:420px; width:100%; margin:0 auto; flex:none; position:relative; }
@@ -1986,18 +1988,18 @@ function place(b, i){ sfx('place'); b.myst = false; b.spawnT = 0; b.placedAt = G
 let press = null, spotTimer = 0;
 const HOLD_MS = 450, MOVE_PX = 14;
 function startHold(c, box){ clearTimeout(spotTimer); if(!settings.holdSpot || c < 0) return; spotTimer = setTimeout(() => { if(press && G){ press.held = true; G.spot = c; showPred(box); } }, HOLD_MS); }
-function endPress(e, ok){ if(!press || e.pointerId !== press.id) return; clearTimeout(spotTimer); const p = press; press = null; if(G){ G.spot = -1; G.pred = null; }
+function endPress(e, ok){ if(!press || e.pointerId !== press.id) return; clearTimeout(spotTimer); const p = press; press = null; clearTimeout(predWarmT); predWarm = null; if(G){ G.spot = -1; G.pred = null; }
   if(ok && !p.held && p.ci >= 0){ const col = trayEl.querySelectorAll('.col')[p.ci]; pull(p.ci, col && col.querySelector('.box')); } }
 trayEl.addEventListener('pointerdown', e => { const el = e.target.closest('.box'); if(!el || (e.button && e.button !== 0)) return;
   press = { id: e.pointerId, x: e.clientX, y: e.clientY, ci: el.dataset.ci != null ? +el.dataset.ci : -1, held: false };
   try{ trayEl.setPointerCapture(e.pointerId); }catch(_){}
-  startHold(el.dataset.c != null ? +el.dataset.c : -1, el.dataset.ci != null && G ? G.cols[+el.dataset.ci][0] : null); });
+  const hb = el.dataset.ci != null && G ? G.cols[+el.dataset.ci][0] : null; startHold(el.dataset.c != null ? +el.dataset.c : -1, hb); warmPred(hb); });
 trayEl.addEventListener('pointermove', e => { if(press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > MOVE_PX){ clearTimeout(spotTimer); if(!press.held) press.ci = -1; } });
 trayEl.addEventListener('pointerup', e => endPress(e, true));
 trayEl.addEventListener('pointercancel', e => endPress(e, false));
 slotsEl.addEventListener('pointerdown', e => { const el = e.target.closest('.slot'); if(!el || !G || mode === 'pick') return;
   const i = [...slotsEl.querySelectorAll('.slot')].indexOf(el), b = G.slots[i]; if(!b || isDone(b)) return;
-  press = { id: e.pointerId, x: e.clientX, y: e.clientY, ci: -1, held: false }; try{ slotsEl.setPointerCapture(e.pointerId); }catch(_){} startHold(b.color, b); });
+  press = { id: e.pointerId, x: e.clientX, y: e.clientY, ci: -1, held: false }; try{ slotsEl.setPointerCapture(e.pointerId); }catch(_){} startHold(b.color, b); warmPred(b); });
 slotsEl.addEventListener('pointerup', e => endPress(e, false));
 slotsEl.addEventListener('pointercancel', e => endPress(e, false));
 trayEl.addEventListener('contextmenu', e => e.preventDefault());
@@ -2050,9 +2052,12 @@ function vacuum(c){
 // "Remaining" pill while a color is lit: cubes of that color still in the picture, plus what its doors still need
 let remainLast = '';
 function remainNote(){ let txt = '', c = G.spot;
-  if(c >= 0 && settings.remain){ let n = 0; for(let i = 0; i < G.tile.length; i++) if(G.tile[i] === c) n++;
-    let d = 0; for(const q of G.doors) if(q.color === c && q.hp > 0) d += q.hp;
-    txt = c + '|' + n + '|' + d; if(txt !== remainLast){ const el = $('#remain'); el.innerHTML = `<i style="background:${G.pal[c]}"></i>Remaining: ${n}` + (d ? ` <small>+${d} for doors</small>` : ''); } }
+  // the preview's "can't reach yet" note lives in this pill as a second line, so it never covers the count
+  const P = G.pred, pn = P && P.left > 0 ? (P.cells.length ? `Preview: ${P.left} can't reach a cube yet` : 'Preview: no cube in reach yet') : '';
+  if(c >= 0 && (settings.remain || pn)){ let n = 0, d = 0;
+    if(settings.remain){ for(let i = 0; i < G.tile.length; i++) if(G.tile[i] === c) n++; for(const q of G.doors) if(q.color === c && q.hp > 0) d += q.hp; }
+    txt = c + '|' + n + '|' + d + '|' + pn; if(txt !== remainLast){ const el = $('#remain');
+      el.innerHTML = (settings.remain ? `<i style="background:${G.pal[c]}"></i>Remaining: ${n}` + (d ? ` <small>+${d} for doors</small>` : '') : '') + (pn ? `<span class="pn">${pn}</span>` : ''); } }
   if(!txt && remainLast) $('#remain').innerHTML = '';
   remainLast = txt; }
 
@@ -2192,11 +2197,12 @@ function cloneLive(){
   return { map: bm, G: Object.assign({}, G, { tile: G.tile.slice(), kind: G.kind.slice(), rockHp: G.rockHp.slice(), doorAt: G.doorAt.slice(), keyAt: G.keyAt ? G.keyAt.slice() : G.keyAt,
     claimed: G.claimed.slice(), doors, keys: G.keys.map(k => Object.assign({}, k)), cols, slots, ants, parts: [], fx: [], dirty: new Set(), bot: false, auto: null, won: false, pred: null, trace: null }) };
 }
+let PRED_DT = 1 / 60, predSoon = 0;
 function predictEat(b){
   if(!G || !b || G.won) return null;
   const inSlot = G.slots.includes(b), free = G.slots.filter(x => !x).length;
   if(!inSlot && !pullable(b, free)) return null;
-  const keep = { G, bfsCache, mode, uiDirty, trayDirty, SPD, jamTimer };
+  const keep = { G, bfsCache, mode, uiDirty, trayDirty, SPD, jamTimer }, sig0 = slotSig();
   HEADLESS = true;
   try{
     const { map, G: C } = cloneLive(), nb = map.get(b);
@@ -2204,7 +2210,7 @@ function predictEat(b){
     if(!inSlot){ const ci = G.cols.findIndex(c => c[0] === nb); if(ci < 0) return null; pull(ci, null); }
     const watch = nb.group || [nb], sis = watch.map(m => G.slots.indexOf(m));
     G.trace = { box: new Set(watch), out: [] };
-    const dt = 1 / 60, until = performance.now() + 150; SPD = Math.max(1, Math.min(2, keep.SPD || 1));
+    const dt = PRED_DT, until = performance.now() + 150; SPD = Math.max(1, Math.min(2, keep.SPD || 1));
     for(let f = 0; f < 20000; f++){
       updateInner(dt);
       if(watch.every(m => m.rem === 0 && m.pend === 0)) break;
@@ -2212,21 +2218,37 @@ function predictEat(b){
       if(!G.ants.length && !G.slots.some(x => x && x.rem > 0 && G.exposed.has(x.color))) break;
       if(f % 120 === 0 && performance.now() > until) break;
     }
-    return { cells: G.trace.out, left: watch.reduce((n, m) => n + m.rem + m.pend, 0), sis, box: b, ver: keep.G.ver, at: performance.now() };
+    return { cells: G.trace.out, left: watch.reduce((n, m) => n + m.rem + m.pend, 0), sis, box: b, ver: keep.G.ver, sig: sig0, at: performance.now() };
   } catch(e){ return null; }
   finally {
     G = keep.G; bfsCache = keep.bfsCache; mode = keep.mode; uiDirty = keep.uiDirty; trayDirty = keep.trayDirty; SPD = keep.SPD; jamTimer = keep.jamTimer; HEADLESS = false;
   }
 }
+// Work the preview out as soon as a finger lands on a box (during the hold delay), so it shows the moment the hold kicks in.
+let predWarm = null, predWarmT = 0;
+function warmPred(box){ clearTimeout(predWarmT); predWarm = null; if(!G || !box || !settings.holdSpot || settings.predict === false) return;
+  predWarmT = setTimeout(() => { if(press && G) predWarm = predictEat(box); }, 200); }
+const predFresh = (p, box) => p && p.box === box && p.ver === G.ver && p.sig === slotSig();
+const slotSig = () => G.slots.map(b => b ? b.id + ':' + b.rem : '-').join(',');
 function showPred(box){
   if(!G || !box || settings.predict === false) return;
-  const p = predictEat(box); G.pred = p;
-  if(p && p.left > 0) banner(p.cells.length ? `Preview: ${p.left} of its ants would have nothing to reach yet.` : 'Preview: none of its cubes can be reached yet.', 2600);
+  clearTimeout(predWarmT); G.pred = predFresh(predWarm, box) ? predWarm : predictEat(box); predWarm = null;
+}
+// While held, refresh off the drawing step (at most every 0.6 s, and only once the board has changed).
+function refreshPred(){ const P = G.pred; if(!P || predSoon || P.ver === G.ver || performance.now() - P.at < 600) return;
+  predSoon = setTimeout(() => { predSoon = 0; if(G && G.pred === P){ const q = predictEat(P.box); if(G.pred === P) G.pred = q; } }, 0); }
+function predRoute(P){
+  if(P.route !== undefined) return P.route; P.route = null;
+  const first = P.cells[0], si = P.sis[0], W = G.W; if(!first || si < 0) return null;
+  const entry = entryFor(si), B = bfs(entry), fx = first.i % W, fy = (first.i / W) | 0; let st = -1, bd = 1e9;
+  for(const [dx, dy] of N4){ const e = ext(fx + dx, fy + dy); if(e >= 0 && e < B.dist.length && B.dist[e] >= 0 && B.dist[e] < bd){ bd = B.dist[e]; st = e; } }
+  if(st < 0) return null;
+  const sx0 = slotX[si] != null ? slotX[si] : cw / 2, tc = { x: bx + (fx + .5) * s, y: by + (fy + .5) * s - lift() };
+  return P.route = smoothPath([{ x: sx0, y: ch - 2 }, ...trace(B.prev, st, entry).reverse().map(cellC), tc]);
 }
 function drawPred(){
   const P = G.pred, W = G.W, L = lift();
-  // the board changes as ants eat: refresh the guess now and then while the box is still held
-  if(P.ver !== G.ver && performance.now() - P.at > 600){ const q = predictEat(P.box); G.pred = q; if(!q) return; return drawPred(); }
+  refreshPred();
   const n = P.cells.length; if(!n) return;
   const num = s >= 11, fs = Math.max(7, Math.round(s * (n > 99 ? .5 : n > 9 ? .6 : .72)));
   ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `700 ${fs}px Fredoka, system-ui, sans-serif`; ctx.lineJoin = 'round';
@@ -2245,11 +2267,8 @@ function drawPred(){
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fillStyle = '#fff6d6'; ctx.fill(); ctx.strokeStyle = '#1d140e'; ctx.lineWidth = 2; ctx.stroke();
     ctx.font = `700 ${Math.round(r * 1.2)}px Fredoka, system-ui, sans-serif`; ctx.fillStyle = '#1d140e'; ctx.fillText('1', cx, cy + .5); }
   // route to the first cube: from the slot, up the lane, along the open cells the ant will walk
-  const first = P.cells[0], si = P.sis[0];
-  if(si >= 0){ const entry = entryFor(si), B = bfs(entry), fx = first.i % W, fy = (first.i / W) | 0; let st = -1, bd = 1e9;
-    for(const [dx, dy] of N4){ const e = ext(fx + dx, fy + dy); if(e >= 0 && e < B.dist.length && B.dist[e] >= 0 && B.dist[e] < bd){ bd = B.dist[e]; st = e; } }
-    if(st >= 0){ const sx0 = slotX[si] != null ? slotX[si] : cw / 2, tc = { x: bx + (fx + .5) * s, y: by + (fy + .5) * s - L };
-      const pts = smoothPath([{ x: sx0, y: ch - 2 }, ...trace(B.prev, st, entry).reverse().map(cellC), tc]);
+  const pts = predRoute(P);
+  if(pts){
       const lw = Math.max(2.5, s * .32), dash = performance.now() / 40;
       ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); for(const q of pts) ctx.lineTo(q.x, q.y);
       ctx.strokeStyle = 'rgba(20,12,8,.8)'; ctx.lineWidth = lw * 1.9; ctx.setLineDash([]); ctx.stroke();
@@ -2257,7 +2276,7 @@ function drawPred(){
       // arrowhead pointing at the first cube
       const a = pts[pts.length - 1], z = pts[Math.max(0, pts.length - 4)], ang = Math.atan2(a.y - z.y, a.x - z.x), h = Math.max(7, s * .9);
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x - Math.cos(ang - .5) * h, a.y - Math.sin(ang - .5) * h); ctx.lineTo(a.x - Math.cos(ang + .5) * h, a.y - Math.sin(ang + .5) * h); ctx.closePath();
-      ctx.fillStyle = '#fff6d6'; ctx.fill(); ctx.strokeStyle = 'rgba(20,12,8,.85)'; ctx.lineWidth = Math.max(1.5, s * .12); ctx.stroke(); } }
+      ctx.fillStyle = '#fff6d6'; ctx.fill(); ctx.strokeStyle = 'rgba(20,12,8,.85)'; ctx.lineWidth = Math.max(1.5, s * .12); ctx.stroke(); }
   ctx.restore();
 }
 
