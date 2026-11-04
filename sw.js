@@ -1,5 +1,5 @@
 // Offline cache for Antline. Bump VERSION whenever index.html changes so phones pick up the update.
-const VERSION = 'antline-v10';
+const VERSION = 'antline-v11';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
 // cache: 'reload' skips the browser's HTTP cache, so a new version never gets filled with the old page
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting())); });
