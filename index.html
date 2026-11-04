@@ -272,6 +272,7 @@ button:focus-visible, input:focus-visible{ outline:3px solid var(--honey); outli
   <div class="row"><label for="sFF">Hold for 2×<small>Press and hold the right half of the picture to double the speed while you hold</small></label><input type="checkbox" id="sFF"></div>
   <div class="row"><label for="sRemain">Remaining count<small>While a color is lit, show how many cubes of it are left in the picture</small></label><input type="checkbox" id="sRemain"></div>
   <div class="row"><label for="sHold">Hold to highlight<small>Hold a box for half a second to light up its tiles</small></label><input type="checkbox" id="sHold"></div>
+  <div class="row"><label for="sPredict">Ant path preview<small>While holding a box, number the cubes its ants will eat in order and draw the route to the first one. Needs Hold to highlight. A best guess: it plays the board forward as if wandering were off</small></label><input type="checkbox" id="sPredict"></div>
   <div class="row"><label>Ant size</label><div class="seg" id="sAnt"></div></div>
   <div class="row"><label for="sHap">Vibration<small>Tiny buzz when an ant grabs a cube. Android Chrome only, and only when the file is opened directly</small></label><input type="checkbox" id="sHap"></div>
   <div class="row"><label for="sHints">Hint rings<small>Outline tray boxes that have reachable tiles</small></label><input type="checkbox" id="sHints"></div>
@@ -342,7 +343,7 @@ const stage = $('#stage'), slotsEl = $('#slots'), trayEl = $('#tray');
 
 /* ---------------- persistence ---------------- */
 const SKEY = 'antline.v1';
-const DEFAULTS = { speed:1, slots:5, cols:4, size:'L', hints:false, ramp:true, antSize:'L', haptics:true, vol:.6, holdSpot:true, pics:'all', shelf:'compact', autoFinish:true, hardLevels:true, tightBoost:true, K:7, diff:'normal', shade:'soft', wander:'little', contrast:'normal', symbols:false, shape:'fit', fps:0, sound:'classic', ff:true, seams:false, remain:true,
+const DEFAULTS = { speed:1, slots:5, cols:4, size:'L', hints:false, ramp:true, antSize:'L', haptics:true, vol:.6, holdSpot:true, predict:true, pics:'all', shelf:'compact', autoFinish:true, hardLevels:true, tightBoost:true, K:7, diff:'normal', shade:'soft', wander:'little', contrast:'normal', symbols:false, shape:'fit', fps:0, sound:'classic', ff:true, seams:false, remain:true,
   mech:{ pairs:true, mystery:true, doors:true, stones:true, keys:true } };
 function loadSave(){ try{ const r = localStorage.getItem(SKEY); if(r) return JSON.parse(r); }catch(e){} return null; }
 const saved = loadSave();
@@ -1515,6 +1516,7 @@ function bite(a){
   const t = a.tgt; let ok = false;
   if(t.type === 'tile'){ G.claimed[t.i] = 0; if(G.tile[t.i] === a.color && G.kind[t.i] === 0){ G.tile[t.i] = -1; G.tilesLeft--; crackAround(t.i); ok = true; burst(a.x, a.y, G.pal[a.color], 3); changed(around(t.i)); } }
   else { const d = t.door; d.claimed = Math.max(0, d.claimed - 1); if(d.hp > 0){ d.hp--; ok = true; const dc = doorCells(d); if(d.hp === 0) openDoor(d); changed(dc); } }
+  if(ok && G.trace && G.trace.box.has(a.box)) G.trace.out.push({ i: t.ty * G.W + t.tx, c: a.color, door: t.type === 'door' });
   a.box.pend--; boxDone(a.box);
   a.carry = ok; a.state = 'back';
   if(ok){ a.pick = a.pickMax = PICK; a.from = { x: bx + (t.tx + .5) * s, y: by + (t.ty + .5) * s - lift() };
@@ -1698,7 +1700,11 @@ function drawDoor(c, d){
   c.strokeStyle = 'rgba(80,45,20,.45)'; c.lineWidth = Math.max(1, s * .06); for(let k = 1; k < d.w; k++){ c.beginPath(); c.moveTo(px + k * s, py + s * .2); c.lineTo(px + k * s, py + h - s * .2); c.stroke(); }
   const r0 = Math.min(w, h) * .4; c.beginPath(); c.arc(px + w / 2, py + h / 2, r0, 0, 7); c.fillStyle = G.pal[d.color]; c.fill(); c.lineWidth = Math.max(1.5, s * .12); c.strokeStyle = '#2b2119'; c.stroke();
   c.font = `700 ${Math.round(r0 * 1.05)}px Fredoka, system-ui, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.lineWidth = Math.max(2, r0 * .28); c.strokeStyle = '#2b2119'; c.strokeText(d.hp, px + w / 2, py + h / 2 + 1); c.fillStyle = '#fff'; c.fillText(d.hp, px + w / 2, py + h / 2 + 1);
+  // white digits with a dark outline on dark circles; on light circles (white, cream, yellow) the white fill vanished and the
+  // digit read as a hollow outline, so those get plain dark digits with a thin light rim instead
+  const light = lum(G.pal[d.color]) > .58, tx = px + w / 2, ty = py + h / 2 + 1; c.lineJoin = 'round'; c.miterLimit = 2;
+  c.lineWidth = Math.max(2, r0 * (light ? .16 : .26)); c.strokeStyle = light ? 'rgba(255,255,255,.9)' : '#2b2119'; c.strokeText(d.hp, tx, ty);
+  c.fillStyle = light ? '#2b2119' : '#fff'; c.fillText(d.hp, tx, ty); c.lineJoin = 'miter'; c.miterLimit = 10;
 }
 // Paints every cube whose drawing could touch cells x0..x1, y0..y1, in back-to-front row order.
 function paintArea(c, x0, y0, x1, y1){
@@ -1831,6 +1837,7 @@ function draw(){
     ctx.save(); ctx.lineCap = 'square'; ctx.lineJoin = 'miter';
     ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.lineWidth = lw * 2.2; ctx.stroke();
     ctx.strokeStyle = `rgba(255,248,214,${pulse})`; ctx.lineWidth = lw; ctx.stroke(); ctx.restore(); }
+  if(G.pred) drawPred();
   // keys float above their pit, bobbing and glowing so they are easy to spot
   const now = performance.now() / 1000;
   for(const k of G.keys){ if(k.got) continue; const cx = bx + (k.x + 1) * s, cy = by + (k.y + 1) * s - lift() - Math.sin(now * 3 + k.id) * s * .25, R = Math.max(s * 2.2, 14);
@@ -1978,19 +1985,19 @@ function place(b, i){ sfx('place'); b.myst = false; b.spawnT = 0; b.placedAt = G
 // The tray now captures the pointer, so the press always ends cleanly, and taps are handled here.
 let press = null, spotTimer = 0;
 const HOLD_MS = 450, MOVE_PX = 14;
-function startHold(c){ clearTimeout(spotTimer); if(!settings.holdSpot || c < 0) return; spotTimer = setTimeout(() => { if(press && G){ press.held = true; G.spot = c; } }, HOLD_MS); }
-function endPress(e, ok){ if(!press || e.pointerId !== press.id) return; clearTimeout(spotTimer); const p = press; press = null; if(G) G.spot = -1;
+function startHold(c, box){ clearTimeout(spotTimer); if(!settings.holdSpot || c < 0) return; spotTimer = setTimeout(() => { if(press && G){ press.held = true; G.spot = c; showPred(box); } }, HOLD_MS); }
+function endPress(e, ok){ if(!press || e.pointerId !== press.id) return; clearTimeout(spotTimer); const p = press; press = null; if(G){ G.spot = -1; G.pred = null; }
   if(ok && !p.held && p.ci >= 0){ const col = trayEl.querySelectorAll('.col')[p.ci]; pull(p.ci, col && col.querySelector('.box')); } }
 trayEl.addEventListener('pointerdown', e => { const el = e.target.closest('.box'); if(!el || (e.button && e.button !== 0)) return;
   press = { id: e.pointerId, x: e.clientX, y: e.clientY, ci: el.dataset.ci != null ? +el.dataset.ci : -1, held: false };
   try{ trayEl.setPointerCapture(e.pointerId); }catch(_){}
-  startHold(el.dataset.c != null ? +el.dataset.c : -1); });
+  startHold(el.dataset.c != null ? +el.dataset.c : -1, el.dataset.ci != null && G ? G.cols[+el.dataset.ci][0] : null); });
 trayEl.addEventListener('pointermove', e => { if(press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > MOVE_PX){ clearTimeout(spotTimer); if(!press.held) press.ci = -1; } });
 trayEl.addEventListener('pointerup', e => endPress(e, true));
 trayEl.addEventListener('pointercancel', e => endPress(e, false));
 slotsEl.addEventListener('pointerdown', e => { const el = e.target.closest('.slot'); if(!el || !G || mode === 'pick') return;
   const i = [...slotsEl.querySelectorAll('.slot')].indexOf(el), b = G.slots[i]; if(!b || isDone(b)) return;
-  press = { id: e.pointerId, x: e.clientX, y: e.clientY, ci: -1, held: false }; try{ slotsEl.setPointerCapture(e.pointerId); }catch(_){} startHold(b.color); });
+  press = { id: e.pointerId, x: e.clientX, y: e.clientY, ci: -1, held: false }; try{ slotsEl.setPointerCapture(e.pointerId); }catch(_){} startHold(b.color, b); });
 slotsEl.addEventListener('pointerup', e => endPress(e, false));
 slotsEl.addEventListener('pointercancel', e => endPress(e, false));
 trayEl.addEventListener('contextmenu', e => e.preventDefault());
@@ -2098,7 +2105,7 @@ function openSettings(){
   seg('#sContrast', [['normal', 'Normal'], ['boost', 'Boosted'], ['strong', 'Strong']], 'contrast', applyPalette);
   $('#sSeams').checked = settings.seams; $('#sRemain').checked = settings.remain;
   seg('#sAnt', [['S', 'S'], ['M', 'M'], ['L', 'L'], ['XL', 'XL']], 'antSize');
-  $('#sHardL').checked = settings.hardLevels; $('#sAuto').checked = settings.autoFinish; $('#sHold').checked = settings.holdSpot; $('#sHap').checked = settings.haptics; $('#sVol').value = settings.vol; $('#sVolV').textContent = Math.round(settings.vol * 100) + '%';
+  $('#sHardL').checked = settings.hardLevels; $('#sAuto').checked = settings.autoFinish; $('#sHold').checked = settings.holdSpot; $('#sPredict').checked = settings.predict !== false; $('#sHap').checked = settings.haptics; $('#sVol').value = settings.vol; $('#sVolV').textContent = Math.round(settings.vol * 100) + '%';
   seg('#sShelf', [['compact', 'Compact'], ['normal', 'Normal'], ['large', 'Large']], 'shelf', () => { applyShelf(); trayDirty = true; requestAnimationFrame(layout); });
   seg('#sShape', [['fit', 'Fill screen'], ['square', 'Frame']], 'shape');
   seg('#sPics', [['all', 'All sets'], ['noto', 'Noto 3D'], ['fluent', 'Fluent 3D'], ['retro', 'Retro'], ['classic', 'Classic']], 'pics');
@@ -2122,6 +2129,7 @@ $('#sVol').oninput = e => { settings.vol = +e.target.value; $('#sVolV').textCont
 $('#sHardL').onchange = e => { settings.hardLevels = e.target.checked; store(); };
 $('#sAuto').onchange = e => { settings.autoFinish = e.target.checked; store(); };
 $('#sHold').onchange = e => { settings.holdSpot = e.target.checked; store(); };
+$('#sPredict').onchange = e => { settings.predict = e.target.checked; store(); };
 $('#sFF').onchange = e => { settings.ff = e.target.checked; store(); if(!settings.ff) ffStop(); };
 /* hold the right half of the picture for 2x, like video apps */
 let ffPress = null, ffTimer = 0, ffHeld = false;
@@ -2169,6 +2177,88 @@ function quantize(img, W, H, K){
   }
   const P = Grid(W, H, -1); idx.forEach((i, j) => { P.g[i] = asg[j]; });
   return P.out(cen.map(c => rgbToHex(c[0], c[1], c[2])), 'Your picture');
+}
+
+/* ---------------- ant path preview ---------------- */
+// Plays the real game engine forward (wandering off) on a copy of the live board: the held box goes where a tap would put
+// it, every box already in the slots keeps working alongside it, and each cube the held box's ants eat is recorded in order.
+function cloneLive(){
+  const bm = new Map(), gm = new Map(), dm = new Map();
+  const cb = b => { if(!b) return b; if(!bm.has(b)) bm.set(b, Object.assign({}, b, { sent: null })); return bm.get(b); };
+  const slots = G.slots.map(cb), cols = G.cols.map(c => c.map(cb)); for(const a of G.ants) cb(a.box);
+  for(const [o, n] of bm) if(o.group){ if(!gm.has(o.group)) gm.set(o.group, o.group.map(cb)); n.group = gm.get(o.group); }
+  const doors = G.doors.map(d => { const n = Object.assign({}, d); dm.set(d, n); return n; });
+  const ants = G.ants.map(a => Object.assign({}, a, { box: cb(a.box), tgt: a.tgt && Object.assign({}, a.tgt, a.tgt.door ? { door: dm.get(a.tgt.door) } : {}) }));
+  return { map: bm, G: Object.assign({}, G, { tile: G.tile.slice(), kind: G.kind.slice(), rockHp: G.rockHp.slice(), doorAt: G.doorAt.slice(), keyAt: G.keyAt ? G.keyAt.slice() : G.keyAt,
+    claimed: G.claimed.slice(), doors, keys: G.keys.map(k => Object.assign({}, k)), cols, slots, ants, parts: [], fx: [], dirty: new Set(), bot: false, auto: null, won: false, pred: null, trace: null }) };
+}
+function predictEat(b){
+  if(!G || !b || G.won) return null;
+  const inSlot = G.slots.includes(b), free = G.slots.filter(x => !x).length;
+  if(!inSlot && !pullable(b, free)) return null;
+  const keep = { G, bfsCache, mode, uiDirty, trayDirty, SPD, jamTimer };
+  HEADLESS = true;
+  try{
+    const { map, G: C } = cloneLive(), nb = map.get(b);
+    G = C; bfsCache = new Map(); mode = null; jamTimer = 1e9; changed();
+    if(!inSlot){ const ci = G.cols.findIndex(c => c[0] === nb); if(ci < 0) return null; pull(ci, null); }
+    const watch = nb.group || [nb], sis = watch.map(m => G.slots.indexOf(m));
+    G.trace = { box: new Set(watch), out: [] };
+    const dt = 1 / 60, until = performance.now() + 150; SPD = Math.max(1, Math.min(2, keep.SPD || 1));
+    for(let f = 0; f < 20000; f++){
+      updateInner(dt);
+      if(watch.every(m => m.rem === 0 && m.pend === 0)) break;
+      // nothing walking and nobody can send an ant: the rest of the held box has no reachable cube yet
+      if(!G.ants.length && !G.slots.some(x => x && x.rem > 0 && G.exposed.has(x.color))) break;
+      if(f % 120 === 0 && performance.now() > until) break;
+    }
+    return { cells: G.trace.out, left: watch.reduce((n, m) => n + m.rem + m.pend, 0), sis, box: b, ver: keep.G.ver, at: performance.now() };
+  } catch(e){ return null; }
+  finally {
+    G = keep.G; bfsCache = keep.bfsCache; mode = keep.mode; uiDirty = keep.uiDirty; trayDirty = keep.trayDirty; SPD = keep.SPD; jamTimer = keep.jamTimer; HEADLESS = false;
+  }
+}
+function showPred(box){
+  if(!G || !box || settings.predict === false) return;
+  const p = predictEat(box); G.pred = p;
+  if(p && p.left > 0) banner(p.cells.length ? `Preview: ${p.left} of its ants would have nothing to reach yet.` : 'Preview: none of its cubes can be reached yet.', 2600);
+}
+function drawPred(){
+  const P = G.pred, W = G.W, L = lift();
+  // the board changes as ants eat: refresh the guess now and then while the box is still held
+  if(P.ver !== G.ver && performance.now() - P.at > 600){ const q = predictEat(P.box); G.pred = q; if(!q) return; return drawPred(); }
+  const n = P.cells.length; if(!n) return;
+  const num = s >= 11, fs = Math.max(7, Math.round(s * (n > 99 ? .5 : n > 9 ? .6 : .72)));
+  ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `700 ${fs}px Fredoka, system-ui, sans-serif`; ctx.lineJoin = 'round';
+  const seen = new Set();
+  P.cells.forEach((c, k) => {
+    const x = c.i % W, y = (c.i / W) | 0, px = bx + x * s, py = by + y * s - L, f = n > 1 ? k / (n - 1) : 0;
+    // early bites glow bright, late ones fade, so the order still reads when the cubes are too small for numbers
+    if(!seen.has(c.i)){ seen.add(c.i); ctx.fillStyle = `rgba(255,255,255,${.85 - f * .6})`; rr(ctx, px + s * .12, py + s * .12, s * .76, s * .76, s * .2); ctx.fill();
+      ctx.strokeStyle = 'rgba(20,12,8,.85)'; ctx.lineWidth = Math.max(1, s * .1); ctx.stroke(); }
+    // a pulse runs through the cubes in eating order, so the order shows even when they are too small to number
+    const sw = (performance.now() / Math.max(1400, n * 70)) % 1.15, dk = sw - f;
+    if(dk >= 0 && dk < .08){ ctx.fillStyle = `rgba(255,214,90,${1 - dk / .08})`; rr(ctx, px - s * .08, py - s * .08, s * 1.16, s * 1.16, s * .25); ctx.fill(); }
+    if(num && !c.door){ ctx.lineWidth = Math.max(2, fs * .28); ctx.strokeStyle = '#fff'; ctx.strokeText(k + 1, px + s / 2, py + s / 2 + .5); ctx.fillStyle = '#1d140e'; ctx.fillText(k + 1, px + s / 2, py + s / 2 + .5); }
+  });
+  if(!num){ const c = P.cells[0], x = c.i % W, y = (c.i / W) | 0, r = Math.max(8, s * .75), cx = bx + (x + .5) * s, cy = by + y * s - L - r * .9;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fillStyle = '#fff6d6'; ctx.fill(); ctx.strokeStyle = '#1d140e'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.font = `700 ${Math.round(r * 1.2)}px Fredoka, system-ui, sans-serif`; ctx.fillStyle = '#1d140e'; ctx.fillText('1', cx, cy + .5); }
+  // route to the first cube: from the slot, up the lane, along the open cells the ant will walk
+  const first = P.cells[0], si = P.sis[0];
+  if(si >= 0){ const entry = entryFor(si), B = bfs(entry), fx = first.i % W, fy = (first.i / W) | 0; let st = -1, bd = 1e9;
+    for(const [dx, dy] of N4){ const e = ext(fx + dx, fy + dy); if(e >= 0 && e < B.dist.length && B.dist[e] >= 0 && B.dist[e] < bd){ bd = B.dist[e]; st = e; } }
+    if(st >= 0){ const sx0 = slotX[si] != null ? slotX[si] : cw / 2, tc = { x: bx + (fx + .5) * s, y: by + (fy + .5) * s - L };
+      const pts = smoothPath([{ x: sx0, y: ch - 2 }, ...trace(B.prev, st, entry).reverse().map(cellC), tc]);
+      const lw = Math.max(2.5, s * .32), dash = performance.now() / 40;
+      ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); for(const q of pts) ctx.lineTo(q.x, q.y);
+      ctx.strokeStyle = 'rgba(20,12,8,.8)'; ctx.lineWidth = lw * 1.9; ctx.setLineDash([]); ctx.stroke();
+      ctx.strokeStyle = '#fff6d6'; ctx.lineWidth = lw; ctx.setLineDash([lw * 1.6, lw * 1.4]); ctx.lineDashOffset = -dash; ctx.stroke(); ctx.setLineDash([]);
+      // arrowhead pointing at the first cube
+      const a = pts[pts.length - 1], z = pts[Math.max(0, pts.length - 4)], ang = Math.atan2(a.y - z.y, a.x - z.x), h = Math.max(7, s * .9);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x - Math.cos(ang - .5) * h, a.y - Math.sin(ang - .5) * h); ctx.lineTo(a.x - Math.cos(ang + .5) * h, a.y - Math.sin(ang + .5) * h); ctx.closePath();
+      ctx.fillStyle = '#fff6d6'; ctx.fill(); ctx.strokeStyle = 'rgba(20,12,8,.85)'; ctx.lineWidth = Math.max(1.5, s * .12); ctx.stroke(); } }
+  ctx.restore();
 }
 
 /* ---------------- auto-play (the solver plays) ---------------- */
