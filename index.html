@@ -331,7 +331,8 @@ self.onmessage = e => { const m = e.data;
     Object.assign(settings, m.settings); __dims = m.dims; slotX = m.slotX || []; cw = m.dims.w; ch = m.dims.h;   // the page sets these in layout(); ants start at the stage bottom
     if(m.job === 'build'){ const key = recipeKey(m.n, m.pic || undefined); buildLevel(m.n, m.pic || undefined);
       postMessage({ id: m.id, rec: recipes.get(key) || { fb: true } }); }
-    else if(m.job === 'check'){ const res = checkLevelHere(m.n, m.d);
+    else if(m.job === 'check'){ if(m.known) recipes.set(m.known[0], m.known[1]);   // check the very board the page would play
+      const res = checkLevelHere(m.n, m.d);
       postMessage({ id: m.id, res, recipes: [...recipes].filter(([k]) => !k.startsWith('pic')) }); }
   }catch(err){ postMessage({ id: m.id, error: String(err && err.message || err) }); }
 };
@@ -985,19 +986,33 @@ function frameAspect(b){
 const VARIANTS = [{}, { seed: 11 }, { seed: 23, waveK: 1.6 }];
 function variantOpt(v, L, base){ const o = Object.assign({}, base); if(v.seed) o.seed = v.seed; if(v.waveK){ let t = 0; for(let i = 0; i < L.tile.length; i++) if(L.tile[i] >= 0) t++; o.wave = Math.max(3, Math.round(14 * Math.sqrt(Math.max(60, t) / 484) * v.waveK)); } return o; }
 const robust = (L, S, base) => VARIANTS.every(v => solveLevel(L, S, variantOpt(v, L, base)).ok === true);
-// Then the real game engine has to win it too (playtest), so a model-only win never reaches you.
+// Then the real game engine has to win it too (playtest), so a model-only win never reaches you. What comes back is the
+// exact pull order the real ants won with (null if they could not). It is saved with the level: "Watch the solver"
+// replays it, and since the game logic runs the same on every screen and speed, it wins there too.
+function provenPlan(L, S, r){ if(!r || r.ok !== true) return null;
+  let p = playtest(L, S, r.plan); if(p.ok === true) return p.pulls;
+  // the model's plan stopped fitting: let it re-plan along the way, then make sure the pulls it ended up with win on their own
+  p = playtest(L, S, r.plan, { replan: true }); if(p.ok !== true) return null;
+  return playtest(L, S, p.pulls).ok === true ? p.pulls : null; }
 function levelPasses(L, tier, S){
   const tough = tier > 0 || settings.diff === 'brutal' || settings.diff === 'savage';
-  if(!tough){ if(!robust(L, S, { greedy: true, nodes: 1e9, ms: 1e9 })) return false;
-    return playtest(L, S, solveLevel(L, S, { greedy: true, nodes: 1e9, ms: 1e9 }).plan).ok === true; }
-  if(!robust(L, S, { nodes: 600, ms: 700 })) return false;
-  return realWin(L, S, solveLevel(L, S, { nodes: 600, ms: 700 }));
+  if(!tough){ if(!robust(L, S, { greedy: true, nodes: 1e9, ms: 1e9 })) return null;
+    const p = playtest(L, S, solveLevel(L, S, { greedy: true, nodes: 1e9, ms: 1e9 }).plan); return p.ok === true ? p.pulls : null; }
+  if(!robust(L, S, { nodes: 600, ms: 700 })) return null;
+  return provenPlan(L, S, solveLevel(L, S, { nodes: 600, ms: 700 }));
 }
+// Fingerprint of a built board. A saved recipe is only trusted if rebuilding it gives the very board that was checked.
+function levelSig(L){ let a = 0x811c9dc5; const add = v => { a = Math.imul(a ^ (v & 0xffff), 16777619); a ^= a >>> 15; };
+  add(L.W); add(L.H); for(let i = 0; i < L.tile.length; i++){ add(L.tile[i] + 1); add(L.kind[i]); add(L.rockHp[i]); }
+  for(const c of L.cols){ add(999); for(const b of c){ add(b.color); add(b.count); add(b.lock + 1); add(b.group ? b.group.length : 0); } }
+  for(const d of L.doors){ add(d.x); add(d.y); add(d.w); add(d.h); add(d.hp); add(d.color); }
+  for(const k of L.keys){ add(k.x); add(k.y); }
+  return a >>> 0; }
 // Which build attempt passed for a level and setup. Kept in memory for restarts and in storage for later visits.
 // GEN names the level generator and checks. Bump it whenever tryBuild, the solver, the checks or fitStage change, so old
 // saved attempts (which passed under the old code) are thrown away instead of rebuilt unchecked.
-const GEN = 2, RKEY = 'antline.recipes.g' + GEN, recipes = new Map();
-try{ localStorage.removeItem('antline.recipes.v1'); }catch(_){}
+const GEN = 3, RKEY = 'antline.recipes.g' + GEN, recipes = new Map();
+try{ localStorage.removeItem('antline.recipes.v1'); localStorage.removeItem('antline.recipes.g2'); }catch(_){}
 try{ const r = JSON.parse(localStorage.getItem(RKEY) || '[]'); r.forEach(([k, v]) => recipes.set(k, v)); }catch(_){}
 let picSerial = 0; const picIds = new WeakMap();
 function recipeKey(n, pic){ if(HEADLESS) return null;
@@ -1021,11 +1036,16 @@ function buildLevel(n, pic){
   const key = recipeKey(n, pic), known = key && recipes.get(key);
   const main = (tt, at) => { BUILD_TIER = tt; const L = tryBuild(n, base, rngOf(n * 104729 + at * 31 + 1 + tt * 7777), tt > 0 || at < 30, tt > 0 || at < 40, tt ? Math.min(.5, at / 50) : Math.min(1, at / 24)); if(L) L.tier = tt; return L; };
   const last = at => { BUILD_TIER = 0; const L = tryBuild(n, base, rngOf(n * 7 + at), false, false, 1); if(L) L.tier = 0; return L; };
-  const keep = (L, rec) => { if(key) rememberRecipe(key, rec); return L; };
+  // a checked board is saved with the pull order that won it, where its ants start, and its fingerprint
+  const keep = (L, rec) => { if(L.plan){ rec.plan = L.plan; rec.geo = L.geo; rec.h = levelSig(L); } if(key) rememberRecipe(key, rec); return L; };
+  const geo = L => { L.geo = levelGeo(L.W, L.H, S); return L; };
   let okFull = null, okRec = null;
   const t0 = Date.now(), late = () => Date.now() - t0 > BUILD_MS;
   try {
-    if(known && !known.fb){ const L = known.last ? last(known.at) : main(known.tt, known.at); if(L){ if(known.free) L.free = true; return L; } recipes.delete(key); }
+    if(known && !known.fb){ const L = known.last ? last(known.at) : main(known.tt, known.at);
+      if(L && known.free){ L.free = true; return L; }
+      if(L && known.plan && known.geo && known.h === levelSig(L)){ L.plan = known.plan; L.geo = known.geo; return L; }
+      recipes.delete(key); }
     if(known && known.fb){ const L = tryBuild(n, base, rngOf(known.seed), false, false, 1); if(L){ L.tier = 0; L.unverified = true; } return L; }
     // wandering on: take the first board that builds, no solver checks
     if(unchecked()) for(let tt = tier; tt >= 0; tt--) for(let at = 0; at < 10; at++){ const L = main(tt, at); if(L){ L.free = true; return keep(L, { tt, at, free: true }); } }
@@ -1033,7 +1053,7 @@ function buildLevel(n, pic){
       const tries = tt ? 30 : 50;
       for(let at = 0; at < tries && !late(); at++){
         const L = main(tt, at);
-        if(!L || !levelPasses(L, tt, S)) continue;
+        if(!L || !(geo(L).plan = levelPasses(L, tt, S))) continue;
         if(tt < 2) return keep(L, { tt, at });
         // Super Hard: prefer a board where one fewer slot provably loses
         if(S <= 2 || solveLevel(L, S - 1, { nodes: 600, ms: 600 }).ok === false) return keep(L, { tt, at });
@@ -1042,7 +1062,7 @@ function buildLevel(n, pic){
       if(okFull) return keep(okFull, okRec);
     }
     // last resort: no keys, doors or stones, gentlest boxes, still checked
-    for(let at = 0; at < 30 && Date.now() - t0 < BUILD_MS * 1.5; at++){ const L = last(at); if(L && realWin(L, S, solveLevel(L, S, { nodes: 400, ms: 500 }))) return keep(L, { last: true, at }); }
+    for(let at = 0; at < 30 && Date.now() - t0 < BUILD_MS * 1.5; at++){ const L = last(at); if(L && (geo(L).plan = provenPlan(L, S, solveLevel(L, S, { nodes: 400, ms: 500 })))) return keep(L, { last: true, at }); }
   } finally { BUILD_TIER = 0; }
   // nothing passed: hand out an unchecked board from a fresh seed each time, so Restart really gives a different one
   const seed = (n * 7 + 1e6 + Math.floor(Math.random() * 1e9)) >>> 0;
@@ -1116,6 +1136,11 @@ function slotCentres(S, cw0){
   const span = Math.min(420, cw0) - 44, sw = (span - 7 * (S - 1)) / S, left = (cw0 - Math.min(420, cw0)) / 2 + 22;
   return [...Array(S)].map((_, i) => left + i * (sw + 7) + sw / 2);
 }
+// Where each slot's ants start and enter the board, in board cells, for this screen. Worked out once when a level is
+// checked and then kept with it (L.geo), so a turned phone or a hidden address bar later can't change how it plays.
+function levelGeo(W, H, S){ const g = geomFor(W, H), sx = slotCentres(S, g.cw);
+  return { ex: sx.map(x => Math.max(-1, Math.min(W, Math.round((x - g.bx) / g.s - .5)))), sx: sx.map(x => (x - g.bx) / g.s), sy: (g.ch + g.s * 1.2 - g.by) / g.s }; }
+function geoEntries(geo, H){ const e = geo.ex.slice(); e.approach = Math.max(1, geo.sy - (H + .5)); return e; }
 function slotEntries(W, H, S){
   // where each slot's ants enter the board: the same sums as entryFor() on the real board
   const g = geomFor(W, H);
@@ -1133,7 +1158,7 @@ function solveLevel(src, S, opt){
   const wave = opt.wave || Math.round(14 * Math.sqrt(Math.max(60, tiles0) / 484));
   // opt.seed adds the game's small random tiebreak (0 to 1.5 steps), so a plan can be tested against slightly different ant choices
   const jit = opt.seed ? rngOf(opt.seed) : null;
-  const entries = opt.entries || slotEntries(W, H, S), entryE = entries.map(x => (H + 1) * EW + x + 1);
+  const entries = opt.entries || (src.geo && src.geo.ex.length === S ? geoEntries(src.geo, H) : slotEntries(W, H, S)), entryE = entries.map(x => (H + 1) * EW + x + 1);
   const boxes = [], idOf = new Map();
   const addBox = b => { if(!idOf.has(b)){ idOf.set(b, boxes.length); boxes.push(b); } return idOf.get(b); };
   const cols = src.cols.map(c => c.map(addBox));
@@ -1400,7 +1425,8 @@ function startLevelNow(n, pic){
     light: L.pal.map(c => mix(c, '#ffffff', .35)), dark: L.pal.map(c => mix(c, '#000000', .2)),
     dirty: new Set(), walk: 9 * Math.sqrt(Math.max(L.W, L.H) / 22), rate: Math.sqrt(tileCount(L) / 484), maxp: Math.round(14 * Math.sqrt(tileCount(L) / 484)),
   });
-  G.levelN = n; G.pic = pic || null; G.dims = stageDims();
+  G.levelN = n; G.pic = pic || null; G.dims = stageDims(); G.out = 0; G.acc = 0; G.nPull = 0;
+  if(!G.geo) G.geo = levelGeo(G.W, G.H, settings.slots);
   G.basePal = L.pal.slice(); G.spot = -1; G.theme = THEMES[pic ? 0 : (n - 1) % THEMES.length]; applyTheme(G.theme); applyPalette();
   G.tilesLeft = 0; for(let i = 0; i < G.tile.length; i++) if(G.tile[i] >= 0) G.tilesLeft++;
   changed();
@@ -1454,7 +1480,7 @@ function bfs(src){
     if(e >= EW){ const f = e - EW; if(dist[f] < 0 && gWalk[f]){ dist[f] = de; prev[f] = e; gQ[qt++] = f; } } }
   B = { dist, prev }; bfsCache.set(key, B); return B;
 }
-function entryFor(si){ const x = slotX[si] != null ? slotX[si] : cw / 2; return ext(Math.max(-1, Math.min(G.W, Math.round((x - bx) / s - .5))), G.H); }
+function entryFor(si){ const g = G.geo; if(g && g.ex[si] != null) return ext(g.ex[si], G.H); const x = slotX[si] != null ? slotX[si] : cw / 2; return ext(Math.max(-1, Math.min(G.W, Math.round((x - bx) / s - .5))), G.H); }
 function nestE(){ return ext(Math.floor(G.W / 2), G.H); }
 
 const WANDER = { off: 0, little: .18, more: .4 };
@@ -1490,15 +1516,28 @@ function trace(prev, from, to){ const out = [from]; let e = from, guard = 0; whi
 function smoothPath(pts, it){ for(let k = 0; k < (it || 2); k++){ if(pts.length < 3) return pts; const o = [pts[0]];
     for(let j = 0; j < pts.length - 1; j++){ const a = pts[j], b = pts[j + 1]; if(j > 0) o.push({ x: a.x * .75 + b.x * .25, y: a.y * .75 + b.y * .25 }); if(j < pts.length - 2) o.push({ x: a.x * .25 + b.x * .75, y: a.y * .25 + b.y * .75 }); }
     o.push(pts[pts.length - 1]); pts = o; } return pts; }
+// Where a slot's ants start, in board cells. Levels carry this from the moment they were checked (G.geo), so the ants take
+// the same time to arrive on every screen; without it (an added slot) it is read off the live layout.
+function antStart(si){ const g = G.geo; if(g && g.sx[si] != null) return { x: g.sx[si], y: g.sy };
+  const x = slotX[si] != null ? slotX[si] : cw / 2; return { x: (x - bx) / s, y: (ch + s * 1.2 - by) / s }; }
+function cumLen(p){ const c = new Float64Array(p.length); for(let j = 1; j < p.length; j++) c[j] = c[j - 1] + Math.hypot(p[j].x - p[j - 1].x, p[j].y - p[j - 1].y); return c; }
 function spawnAnt(b, si, t){
   const entry = entryFor(si), B = bfs(entry);
   const cells = trace(B.prev, t.stand, entry).reverse();
-  const sx0 = slotX[si] != null ? slotX[si] : cw / 2;
-  const pts = [{ x: sx0, y: ch + s * 1.2 }, ...cells.map(cellC)];
-  const sc = cellC(t.stand), tc = { x: bx + (t.tx + .5) * s, y: by + (t.ty + .5) * s };
-  pts.push({ x: sc.x + (tc.x - sc.x) * .4, y: sc.y + (tc.y - sc.y) * .4 });
-  const sm = smoothPath(pts);
-  G.ants.push({ box: b, color: b.color, si, tgt: t, pts: sm, i: 0, x: sm[0].x, y: sm[0].y, ang: -Math.PI / 2, phase: Math.random() * 6, state: 'go', carry: false, off: (Math.random() - .5) * .35 * s, sp: wanderNow() === 'off' ? 1 : .88 + Math.random() * .24, seed: Math.random() * 6.28, age: 0 });
+  // The game logic only knows how far the ant has walked along its route, measured in board cells (u of len).
+  // Where it is drawn comes from that, so screen size, frame rate and game speed never change what gets eaten.
+  const cc = e => ({ x: exX(e) + .5, y: exY(e) + .5 }), sl = cc(t.stand);
+  const lp = smoothPath([antStart(si), ...cells.map(cc), { x: sl.x + (t.tx + .5 - sl.x) * .4, y: sl.y + (t.ty + .5 - sl.y) * .4 }]), cl = cumLen(lp);
+  const a = { box: b, color: b.color, si, tgt: t, state: 'go', carry: false, u: 0, len: Math.max(.01, cl[cl.length - 1]), ez: .3, age: 0, i: 0, sp: wanderNow() === 'off' ? 1 : .88 + Math.random() * .24 };
+  if(!HEADLESS){
+    const sx0 = slotX[si] != null ? slotX[si] : cw / 2;
+    const pts = [{ x: sx0, y: ch + s * 1.2 }, ...cells.map(cellC)];
+    const sc = cellC(t.stand), tc = { x: bx + (t.tx + .5) * s, y: by + (t.ty + .5) * s };
+    pts.push({ x: sc.x + (tc.x - sc.x) * .4, y: sc.y + (tc.y - sc.y) * .4 });
+    const sm = smoothPath(pts);
+    Object.assign(a, { pts: sm, cum: cumLen(sm), x: sm[0].x, y: sm[0].y, ang: -Math.PI / 2, phase: Math.random() * 6, off: (Math.random() - .5) * .35 * s, seed: Math.random() * 6.28 });
+  }
+  G.ants.push(a); G.out = (G.out | 0) + 1;
   b.tick = true;
 }
 function crackAround(i){ const W = G.W, x = i % W, y = (i / W) | 0;
@@ -1556,12 +1595,15 @@ let lastBuzz = 0;
 function buzz(force){ if(HEADLESS || !settings.haptics || !navigator.vibrate) return; const now = performance.now(); if(!force && now - lastBuzz < 70) return; lastBuzz = now; try{ navigator.vibrate(force ? 30 : 12); }catch(e){} }
 const PICK = .42, SINK = .32;
 function bite(a){
-  const t = a.tgt; let ok = false;
+  const t = a.tgt; let ok = false; G.out = Math.max(0, (G.out | 0) - 1);
+  if(a.pts){ const q = a.pts[a.pts.length - 1]; a.x = q.x; a.y = q.y; }
   if(t.type === 'tile'){ G.claimed[t.i] = 0; if(G.tile[t.i] === a.color && G.kind[t.i] === 0){ G.tile[t.i] = -1; G.tilesLeft--; crackAround(t.i); ok = true; burst(a.x, a.y, G.pal[a.color], 3); changed(around(t.i)); } }
   else { const d = t.door; d.claimed = Math.max(0, d.claimed - 1); if(d.hp > 0){ d.hp--; ok = true; const dc = doorCells(d); if(d.hp === 0) openDoor(d); changed(dc); } }
   if(ok && G.trace && G.trace.box.has(a.box)) G.trace.out.push({ i: t.ty * G.W + t.tx, c: a.color, door: t.type === 'door' });
   a.box.pend--; boxDone(a.box);
   a.carry = ok; a.state = 'back';
+  // off screen (level checks, the path preview) the walk home is skipped: it never changes the board
+  if(HEADLESS || !a.pts){ a.dead = true; return; }
   if(ok){ a.pick = a.pickMax = PICK; a.from = { x: bx + (t.tx + .5) * s, y: by + (t.ty + .5) * s - lift() };
     G.fx.push({ type: 'ghost', x: a.from.x, y: a.from.y, t: 0, dur: .22 }); buzz(); sfx('pick'); }
   const B = bfs(nestE()), cells = trace(B.prev, t.stand, nestE());
@@ -1616,20 +1658,25 @@ function tightCheck(dt){
 // It used to be written into settings.speed and restored afterwards, which also undid the auto-finish 4x.
 let SPD = 1;
 const BOOST_MAX = 10;   // the trickle boost doubles the speed up to this; at 8x it lifts to 10x
+// The game logic (which ant goes for which cube, and when a cube is taken) runs in fixed steps of game time.
+// It used to advance once per drawn frame, so the same pulls could end differently at 60 Hz and 120 Hz, or at 0.75x
+// and 4x. A level could pass its check and still jam on your screen. Now a frame just runs however many steps fit.
+const TICK = 1 / 120;
 function update(dt){
   tightCheck(dt);
-  SPD = G.boost > 1 ? Math.max(settings.speed, Math.min(BOOST_MAX, settings.speed * G.boost)) : settings.speed;
-  const reps = ffOn() ? 2 : 1;
-  for(let k = 0; k < reps && G; k++){ updateInner(dt); autoFinish(dt); autoPlay(dt); }
+  SPD = (G.boost > 1 ? Math.max(settings.speed, Math.min(BOOST_MAX, settings.speed * G.boost)) : settings.speed) * (ffOn() ? 2 : 1);
+  const g0 = G; G.acc = (G.acc || 0) + dt * SPD;
+  for(let n = 0; G === g0 && G.acc >= TICK && n < 300; n++){ G.acc -= TICK; tick(); botTick(); }
+  if(G !== g0) return;
+  if(G.acc > TICK) G.acc = TICK;   // a long stall: drop the backlog instead of racing to catch up
+  animate(dt); autoFinish(dt);
 }
-function updateInner(dt){
-  const sdt = dt * SPD; G.clock = (G.clock || 0) + sdt;
+function tick(){
+  G.clock = (G.clock || 0) + TICK;
   if(wanderNow() !== 'off' && !G.won) G.wandered = true;
-  G.slots.forEach((b, si) => {
-    if(!b || b.rem <= 0) return;
-    // catch up on every ant that was due this frame: at high speed one frame covers several spawn gaps,
-    // and sending only one per frame used to make fast play send ants slower than slow play
-    b.spawnT -= sdt;
+  for(let si = 0; si < G.slots.length; si++){
+    const b = G.slots[si]; if(!b || b.rem <= 0) continue;
+    b.spawnT -= TICK;
     for(let k = 0; k < 16 && b.rem > 0 && b.spawnT <= 0; k++){
       if(b.pend >= G.maxp){ b.spawnT = .05; break; }
       const t = findTarget(b.color, entryFor(si));
@@ -1640,19 +1687,45 @@ function updateInner(dt){
       G.ants[G.ants.length - 1].lead = lead; (b.sent || (b.sent = [])).push(G.clock - lead); if(b.sent.length > 40) b.sent.splice(0, 20);
       if(b.rem === 0) boxDone(b);
     }
-  });
+  }
+  let died = false; const w = G.walk;
+  for(const a of G.ants){
+    if(a.state !== 'go') continue;
+    const extra = a.lead > 0 ? a.lead : 0; a.lead = 0;
+    a.age += TICK + extra;
+    // ease in after starting, ease out on the last stretch to the cube
+    let ease = Math.min(1, .3 + a.age * 3.2); const rem = a.len - a.u; if(rem < 1.1) ease *= Math.max(.35, rem / 1.1);
+    a.ez = (a.sp || 1) * ease; a.u += w * (TICK + extra) * a.ez;
+    if(a.u >= a.len){ bite(a); if(a.dead) died = true; }
+  }
+  if(died) G.ants = G.ants.filter(a => !a.dead);
+  if(!G.won && G.tilesLeft <= 0 && !G.out && G.doors.every(d => d.hp <= 0)){ G.won = true; endAuto(); }
+}
+// Everything that is only for show: where each ant is drawn, the walk home, sparks. Runs once per drawn frame.
+function animate(dt){
   const v = s * G.walk * SPD * dt;
   for(const f of G.fx) f.t += dt * Math.min(3, Math.sqrt(SPD));
   if(G.fx.length) G.fx = G.fx.filter(f => f.t < f.dur);
   for(const a of G.ants){
+    if(a.state === 'go'){
+      if(!a.pts) continue;
+      // the part of a step not yet run is added on, so the ants glide at any frame rate
+      const end = a.cum[a.cum.length - 1], want = Math.min(1, (a.u + G.walk * (G.acc || 0) * a.ez) / a.len) * end;
+      while(a.i < a.pts.length - 2 && a.cum[a.i + 1] <= want) a.i++;
+      const p = a.pts[a.i], q = a.pts[Math.min(a.pts.length - 1, a.i + 1)], seg = a.cum[Math.min(a.cum.length - 1, a.i + 1)] - a.cum[a.i], r = seg > 0 ? Math.min(1, Math.max(0, (want - a.cum[a.i]) / seg)) : 0;
+      const dx = q.x - p.x, dy = q.y - p.y;
+      if(Math.hypot(dx, dy) > .001){ const ta = Math.atan2(dy, dx); let da = ta - a.ang; while(da > Math.PI) da -= 2 * Math.PI; while(da < -Math.PI) da += 2 * Math.PI; a.ang += da * Math.min(1, dt * 16 * Math.sqrt(SPD)); }
+      a.x = p.x + dx * r; a.y = p.y + dy * r;
+      a.phase += Math.min(v * a.ez / (s * .22), dt * 42);
+      continue;
+    }
     if(a.pick > 0){ a.pick -= dt * SPD; a.phase += dt * SPD * 4; continue; }
     if(a.sink > 0){ a.sink -= dt * Math.min(3, SPD); if(a.sink <= 0) a.dead = true; continue; }
-    const extra = a.lead > 0 ? a.lead : 0; a.lead = 0;
-    a.age += dt * SPD + extra;
-    // ease in after starting or after a pickup, ease out on the last stretch to the tile or the nest
+    a.age += dt * SPD;
+    // ease in after a pickup, ease out on the last stretch to the nest
     let ease = Math.min(1, .3 + a.age * 3.2);
     if(a.i >= a.pts.length - 3){ const q = a.pts[a.pts.length - 1], rem = Math.hypot(q.x - a.x, q.y - a.y); ease *= Math.max(.35, Math.min(1, rem / (s * 1.1))); }
-    let left = (v + s * G.walk * extra) * (a.sp || 1) * ease;
+    let left = v * (a.sp || 1) * ease;
     while(left > 0 && a.i < a.pts.length - 1){
       const p = a.pts[a.i + 1], dx = p.x - a.x, dy = p.y - a.y, d = Math.hypot(dx, dy);
       if(d > .001){ const ta = Math.atan2(dy, dx); let da = ta - a.ang; while(da > Math.PI) da -= 2 * Math.PI; while(da < -Math.PI) da += 2 * Math.PI; a.ang += da * Math.min(1, dt * 16 * Math.sqrt(SPD)); }
@@ -1661,18 +1734,14 @@ function updateInner(dt){
     // legs follow the walking speed but are capped, so at high speed they don't step further than a frame can show
     // (past that they alias, like a wagon wheel on film, and the ants look like they're walking in slow motion)
     a.phase += Math.min(v * (a.sp || 1) * ease / (s * .22), dt * 42);
-    if(a.i >= a.pts.length - 1){
-      if(a.state === 'go') bite(a);
-      else { a.sink = a.sinkMax = SINK; if(a.carry){ burst(nest.x, nest.y, G.pal[a.color], 5); sfx('drop'); G.fx.push({ type: 'ring', x: nest.x, y: nest.y, t: 0, dur: .4, color: G.pal[a.color], r: s * 2.2, flat: .45 }); } }
-    }
+    if(a.i >= a.pts.length - 1){ a.sink = a.sinkMax = SINK; if(a.carry){ burst(nest.x, nest.y, G.pal[a.color], 5); sfx('drop'); G.fx.push({ type: 'ring', x: nest.x, y: nest.y, t: 0, dur: .4, color: G.pal[a.color], r: s * 2.2, flat: .45 }); } }
   }
   if(G.ants.some(a => a.dead)) G.ants = G.ants.filter(a => !a.dead);
   for(const p of G.parts){ p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 260 * dt; p.life -= dt; }
   if(G.parts.length) G.parts = G.parts.filter(p => p.life > 0);
 
-  if(!G.won && G.tilesLeft <= 0 && G.doors.every(d => d.hp <= 0) && G.ants.length === 0){
-    G.won = true; endAuto(); const g0 = G; setTimeout(() => { if(G === g0) showWin(); }, 450);
-  }
+  // the win screen waits for the last ant to get home
+  if(G.won && !G.winShown && G.ants.length === 0){ G.winShown = true; const g0 = G; setTimeout(() => { if(G === g0) showWin(); }, 450); }
   jamTimer -= dt;
   if(jamTimer <= 0){ jamTimer = .4; checkJam(); }
 }
@@ -1918,7 +1987,7 @@ function layout(){
   const s0 = s, bx0 = bx, by0 = by, gm = geomFor(G.W, G.H); s = gm.s; bx = gm.bx; by = gm.by;
   // ants already walking keep their routes in screen pixels, so move those routes onto the resized board
   if(s0 > 0 && (s0 !== s || bx0 !== bx || by0 !== by)){ const k = s / s0, mv = p => { p.x = bx + (p.x - bx0) * k; p.y = by + (p.y - by0) * k; };
-    for(const a of G.ants){ mv(a); a.pts.forEach(mv); a.off *= k; }
+    for(const a of G.ants){ mv(a); a.pts.forEach(mv); a.off *= k; if(a.cum) a.cum = cumLen(a.pts); }
     for(const q of G.parts || []) if(q.x != null) mv(q);
     for(const f of G.fx || []) if(f.x != null){ mv(f); if(f.r) f.r *= k; } }
   const below = by + (G.H + .8) * s + s * .5;
@@ -2030,6 +2099,8 @@ function pull(ci, el){
     if(!free.length){ shake(el); banner('No free slot.'); return; }
     G.cols[ci].shift(); place(b, free[0]);
   }
+  // still following the pull order the level check proved? (the solver replays it for as long as that holds)
+  const k = G.nPull | 0; if(!G.plan || G.plan[k] !== ci) G.offPlan = true; G.nPull = k + 1;
   trayDirty = true; uiDirty = true;
 }
 function place(b, i){ sfx('place'); b.myst = false; b.spawnT = 0; b.placedAt = G.clock || 0; G.slots[i] = b; if(HEADLESS) return; const el = slotsEl.querySelectorAll('.slot')[i]; if(el){ el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); } }
@@ -2062,7 +2133,7 @@ function setMode(m){ mode = m; document.querySelectorAll('.boost').forEach(b => 
 function booster(k){
   if(k !== 'pick') sfx('whoosh');
   $('#mJam').hidden = true;
-  if(k === 'slot'){ if(G.slots.length >= 7){ banner('Seven slots is the most that fit.'); return; } G.slots.push(null); buildSlots(); G.used = true; banner('Slot added.'); }
+  if(k === 'slot'){ if(G.slots.length >= 7){ banner('Seven slots is the most that fit.'); return; } G.slots.push(null); G.geo = null; buildSlots(); G.used = true; banner('Slot added.'); }
   else if(k === 'shuffle'){
     const pos = [], items = [];
     G.cols.forEach((col, ci) => col.forEach((b, rw) => { if(!b.group && !(b.lock >= 0 && !G.keys[b.lock].got)){ pos.push([ci, rw]); items.push(b); } }));
@@ -2257,7 +2328,7 @@ function cloneLive(){
   return { map: bm, G: Object.assign({}, G, { tile: G.tile.slice(), kind: G.kind.slice(), rockHp: G.rockHp.slice(), doorAt: G.doorAt.slice(), keyAt: G.keyAt ? G.keyAt.slice() : G.keyAt,
     claimed: G.claimed.slice(), doors, keys: G.keys.map(k => Object.assign({}, k)), cols, slots, ants, parts: [], fx: [], dirty: new Set(), bot: false, auto: null, won: false, pred: null, trace: null }) };
 }
-let PRED_DT = 1 / 60, predSoon = 0;
+let predSoon = 0;
 function predictEat(b){
   if(!G || !b || G.won) return null;
   const inSlot = G.slots.includes(b), free = G.slots.filter(x => !x).length;
@@ -2270,13 +2341,13 @@ function predictEat(b){
     if(!inSlot){ const ci = G.cols.findIndex(c => c[0] === nb); if(ci < 0) return null; pull(ci, null); }
     const watch = nb.group || [nb], sis = watch.map(m => G.slots.indexOf(m));
     G.trace = { box: new Set(watch), out: [] };
-    const dt = PRED_DT, until = performance.now() + 150; SPD = Math.max(1, Math.min(2, keep.SPD || 1));
-    for(let f = 0; f < 20000; f++){
-      updateInner(dt);
+    const until = performance.now() + 150;
+    for(let f = 0; f < 200000; f++){
+      tick();
       if(watch.every(m => m.rem === 0 && m.pend === 0)) break;
       // nothing walking and nobody can send an ant: the rest of the held box has no reachable cube yet
-      if(!G.ants.length && !G.slots.some(x => x && x.rem > 0 && G.exposed.has(x.color))) break;
-      if(f % 120 === 0 && performance.now() > until) break;
+      if(!G.out && !G.slots.some(x => x && x.rem > 0 && G.exposed.has(x.color))) break;
+      if(f % 240 === 0 && performance.now() > until) break;
     }
     return { cells: G.trace.out, left: watch.reduce((n, m) => n + m.rem + m.pend, 0), sis, box: b, ver: keep.G.ver, sig: sig0, at: performance.now() };
   } catch(e){ return null; }
@@ -2343,21 +2414,25 @@ function drawPred(){
 /* ---------------- auto-play (the solver plays) ---------------- */
 // Waits until the ants are done with what is in the slots, then asks the solver which box to pull from the board as it
 // stands right now. Re-planning every move means it copes when the real ants eat a little differently than predicted.
-function liveState(){ return { W: G.W, H: G.H, pal: G.pal, maxp: G.maxp, walk: G.walk, tile: G.tile, kind: G.kind, rockHp: G.rockHp, doors: G.doors, keys: G.keys, cols: G.cols,
+function liveState(){ return { W: G.W, H: G.H, geo: G.geo, pal: G.pal, maxp: G.maxp, walk: G.walk, tile: G.tile, kind: G.kind, rockHp: G.rockHp, doors: G.doors, keys: G.keys, cols: G.cols,
   slots: G.slots.map(b => b && !b.cleared ? { box: b, rem: b.rem } : null) }; }
-const liveEntries = () => { const e = G.slots.map((_, i) => exX(entryFor(i))); e.approach = Math.max(1, (ch + s * 1.2 - (by + (G.H + .5) * s)) / s); return e; };
-function autoPlay(dt){
-  if(!G.bot || G.won || mode) return;
-  G.botT = (G.botT || 0) - dt; if(G.botT > 0) return; G.botT = .12;
-  if(G.ants.length) return;
+const liveEntries = () => { if(G.geo && G.geo.ex.length === G.slots.length) return geoEntries(G.geo, G.H); const e = G.slots.map((_, i) => exX(entryFor(i))); e.approach = Math.max(1, (ch + s * 1.2 - (by + (G.H + .5) * s)) / s); return e; };
+// Runs after every logic step, exactly as the level check's playtest does, so the two can never drift apart.
+function botTick(){
+  if(!G.bot || G.won || mode || G.out) return;
   for(const b of G.slots) if(b && b.rem > 0 && G.exposed.has(b.color)) return;   // ants still have work
-  if(!G.slots.some(x => !x)) return;
+  const free = G.slots.filter(x => !x).length; if(!free) return;
+  const go = ci => { const el = trayEl.querySelectorAll('.col')[ci]; pull(ci, el && el.querySelector('.box')); };
+  // First choice: the pull order that won this very board when it was checked. Same board, same ants, same result.
+  const P = G.plan, k = G.nPull | 0;
+  if(P && !G.offPlan && !G.used && k < P.length && pullable(G.cols[P[k]][0], free)){ go(P[k]); return; }
+  // No proven order (wandering was on when it was built, your own pulls came first, or a power-up was used): search from here.
   const S = G.slots.length, en = liveEntries();
   // quick look first, then a longer one; only a finished search can say the position is lost
   let r = solveLevel(liveState(), S, { nodes: 900, ms: 300, entries: en });
   if(r.ok === null) r = solveLevel(liveState(), S, { nodes: 6000, ms: 2500, entries: en });
   if(r.ok === null){ const g = solveLevel(liveState(), S, { greedy: true, nodes: 1e9, ms: 1e9, entries: en, firstMove: true }); if(g.first != null) r = { ok: true, plan: [g.first], guess: true }; }
-  if(r.ok && r.plan.length){ const ci = r.plan[0], el = trayEl.querySelectorAll('.col')[ci]; pull(ci, el && el.querySelector('.box')); return; }
+  if(r.ok && r.plan.length){ go(r.plan[0]); return; }
   G.bot = false; banner(r.ok === false ? 'Solver: every line from here jams (the ants ate differently than it expected).' : 'Solver: nothing left to pull.', 4000);
 }
 
@@ -2385,17 +2460,17 @@ function playtest(L, S, plan, opt){
     nest = { x: bx + (Math.floor(L.W / 2) + .5) * s, y: Math.min(g.ch - s * 1.2, below + Math.max(LANE * s * .5, (g.ch - below) * .4)) };
     const C = cloneLevel(L), tc = tileCount(C);
     G = Object.assign(C, { slots: new Array(S).fill(null), ants: [], parts: [], fx: [], claimed: new Uint8Array(C.W * C.H), ver: 0, won: false,
-      boardDirty: false, dirty: new Set(), walk: 9 * Math.sqrt(Math.max(C.W, C.H) / 22), rate: Math.sqrt(tc / 484), maxp: Math.round(14 * Math.sqrt(tc / 484)), boost: 1, clock: 0 });
+      boardDirty: false, dirty: new Set(), walk: 9 * Math.sqrt(Math.max(C.W, C.H) / 22), rate: Math.sqrt(tc / 484), maxp: Math.round(14 * Math.sqrt(tc / 484)), boost: 1, clock: 0, out: 0, nPull: 0 });
+    if(!G.geo || G.geo.ex.length !== S) G.geo = levelGeo(C.W, C.H, S);
     G.tilesLeft = 0; for(let i = 0; i < G.tile.length; i++) if(G.tile[i] >= 0) G.tilesLeft++;
     changed();
-    settings.speed = SPD = opt.speed || 4;
-    const dt = opt.dt || 1 / 60, until = performance.now() + (opt.ms || 20000);
+    const until = performance.now() + (opt.ms || 20000), pulls = [];
     let step = 0, replans = 0, own = plan ? plan.slice() : [];
-    for(let f = 0; f < 200000; f++){
-      SPD = settings.speed; updateInner(dt);
-      if(G.won) return { ok: true, frames: f, replans };
-      if(f % 600 === 0 && performance.now() > until) return { ok: null, why: 'time', replans };
-      if(G.ants.length) continue;
+    for(let f = 0; f < 3000000; f++){
+      tick();
+      if(G.won) return { ok: true, ticks: f, replans, pulls };
+      if(f % 4000 === 0 && performance.now() > until) return { ok: null, why: 'time', replans };
+      if(G.out) continue;
       if(G.slots.some(b => b && b.rem > 0 && G.exposed.has(b.color))) continue;
       if(G.tilesLeft <= 0 && G.doors.every(d => d.hp <= 0)) continue;
       const free = G.slots.filter(x => !x).length;
@@ -2411,7 +2486,7 @@ function playtest(L, S, plan, opt){
         own = own.slice(0, step).concat(r.plan); ci = own[step];
         if(!pullable(G.cols[ci][0], free)) return { ok: false, why: 'jammed', step, replans };
       }
-      pull(ci, null); step++;
+      pull(ci, null); pulls.push(ci); step++;
     }
     return { ok: false, why: 'timeout', replans };
   } finally {
@@ -2419,10 +2494,6 @@ function playtest(L, S, plan, opt){
     jamTimer = keep.jamTimer; uiDirty = keep.uiDirty; trayDirty = keep.trayDirty; SPD = keep.SPD; settings.speed = keep.speed; HEADLESS = false;
   }
 }
-// A solver win only counts once the real engine wins it too: first the exact plan, then with re-planning.
-function realWin(L, S, r){ if(!r || r.ok !== true) return false;
-  return playtest(L, S, r.plan).ok === true || playtest(L, S, r.plan, { replan: true }).ok === true; }
-
 /* ---------------- level browser ---------------- */
 const LEV_PAGE = 30, levCheck = new Map();   // "level|difficulty|setup" -> 'g' | 'a' | 'x' | 'u'
 let levStart = 1, levBusy = false;
@@ -2486,20 +2557,25 @@ $('#levCheck').onclick = () => {
       $('#levStatus').textContent = 'Checking level ' + n + ' on ' + d + '… ' + done + ' / ' + (done + jobs.length);
       if(done % 3 === 0) renderLevels(); setTimeout(step, 0); };
     if(workerOk){ $('#levStatus').textContent = 'Checking level ' + n + ' on ' + d + '… ' + done + ' / ' + (done + jobs.length + 1);
-      workerJob({ job: 'check', n, d }).then(m => { (m.recipes || []).forEach(([k, v]) => { if(!recipes.has(k)) rememberRecipe(k, v); }); finish(m.res); }, () => finish(checkLevelHere(n, d))); return; }
+      workerJob({ job: 'check', n, d, known: knownRecipe(n, d) }).then(m => { (m.recipes || []).forEach(([k, v]) => { const o = recipes.get(k); if(!o || (!o.plan && v.plan)) rememberRecipe(k, v); }); finish(m.res); }, () => finish(checkLevelHere(n, d))); return; }
     finish(checkLevelHere(n, d));
   };
   renderLevels(); setTimeout(step, 30);
 };
+const knownRecipe = (n, d) => { const keep = settings.diff; settings.diff = d; try{ const k = recipeKey(n), v = k && recipes.get(k); return v && !v.fb ? [k, v] : null; } finally { settings.diff = keep; } };
 // One level checker verdict: g plain play wins, a needs planning, f the real ants can't win the plan, x impossible, u unknown
 function checkLevelHere(n, d){
     const keep = settings.diff; let res = 'u';
     try{ settings.diff = d; const L = buildLevel(n);
       if(L){ const S = settings.slots, gr = solveLevel(L, S, { greedy: true, nodes: 1e9, ms: 1e9 });
         if(gr.ok === true && playtest(L, S, gr.plan).ok === true) res = 'g';
+        // the board carries the pull order it was built with: replay it with the real ants, the same run the solver will do
+        else if(L.plan && playtest(L, S, L.plan).ok === true) res = 'a';
         else { const r = solveLevel(L, S, { nodes: 4000, ms: 2500 });
           // the solver's win is replayed with the real ants; if they can't win it either, the level is marked as failing
-          res = r.ok === true ? (realWin(L, S, r) ? 'a' : 'f') : r.ok === false ? 'x' : 'u'; } }
+          const pp = provenPlan(L, S, r); res = pp ? 'a' : r.ok === true ? 'f' : r.ok === false ? 'x' : 'u';
+          // found a winning order for a board that had none saved: keep it, so the solver can replay it
+          if(pp && !L.plan && !L.unverified){ const key = recipeKey(n), rec = key && recipes.get(key); if(rec && !rec.fb){ L.plan = pp; rememberRecipe(key, Object.assign({}, rec, { free: false, plan: pp, geo: L.geo || levelGeo(L.W, L.H, S), h: levelSig(L) })); } } } }
     } finally { settings.diff = keep; }
     return res;
 }
